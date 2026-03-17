@@ -14,6 +14,7 @@ import asyncio
 import httpx
 import os
 import uuid
+import json
 
 # Import database helpers
 from server.db import (
@@ -24,7 +25,16 @@ from server.db import (
     get_or_create_conversation, list_conversations, update_conversation_stats,
     create_message, get_recent_messages, count_conversation_messages,
     get_user_stats, get_profile,
+    # RAG functions
+    create_knowledge_chunks, search_knowledge,
+    # Brainstorm functions
+    get_brainstorm_session, create_brainstorm_session, add_brainstorm_message, finalize_brainstorm,
+    # Ticket functions
+    list_tickets, get_ticket, create_ticket, update_ticket, get_ticket_stats,
 )
+
+# Import tool system
+from server.tools import get_tool_definitions, execute_tool
 
 app = FastAPI(title="AI Agent Platform", version="2.0")
 
@@ -287,7 +297,7 @@ async def delete_agent_endpoint(agent_id: str, user=Depends(get_current_user)):
 
 @app.post("/api/agents/{agent_id}/knowledge")
 async def add_knowledge_entry(agent_id: str, body: dict = Body(...), user=Depends(get_current_user)):
-    """Add knowledge base entry"""
+    """Add knowledge base entry with automatic chunking"""
     try:
         agent = get_agent(agent_id)
         
@@ -295,6 +305,15 @@ async def add_knowledge_entry(agent_id: str, body: dict = Body(...), user=Depend
             raise HTTPException(404, "Agent not found")
         
         entry = create_knowledge(agent_id, body)
+        
+        # Create chunks for RAG
+        if entry:
+            chunk_count = create_knowledge_chunks(
+                entry["id"],
+                agent_id,
+                entry["content"]
+            )
+            entry["chunk_count"] = chunk_count
         
         return {"status": "added", "entry": entry}
     
@@ -321,6 +340,235 @@ async def delete_knowledge_entry(agent_id: str, entry_id: str, user=Depends(get_
         raise
     except Exception as e:
         raise HTTPException(500, f"Failed to delete knowledge: {str(e)}")
+
+
+@app.post("/api/agents/{agent_id}/knowledge/search")
+async def search_knowledge_endpoint(agent_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Search knowledge base with RAG"""
+    try:
+        agent = get_agent(agent_id)
+        
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        query = body.get("query", "")
+        limit = body.get("limit", 5)
+        
+        if not query:
+            raise HTTPException(400, "Query required")
+        
+        results = search_knowledge(agent_id, query, limit)
+        
+        return {"results": results, "count": len(results)}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to search knowledge: {str(e)}")
+
+
+# === BRAINSTORM ONBOARDING ===
+
+BRAINSTORM_SYSTEM_PROMPT = """Bạn là trợ lý thiết lập agent AI cho doanh nghiệp. Nhiệm vụ của bạn là hỏi các câu hỏi thông minh để hiểu rõ doanh nghiệp và tạo cấu hình agent tự động.
+
+Hãy hỏi từng câu một, ngắn gọn, thân thiện. Thu thập các thông tin sau:
+
+1. **Loại hình kinh doanh**: Bán gì? Dịch vụ gì? Đối tượng khách hàng?
+2. **Giọng điệu**: Formal, casual, hay friendly? Tiếng Việt hay song ngữ?
+3. **Giờ làm việc**: Mở cửa lúc mấy giờ? Các ngày nào trong tuần?
+4. **Liên hệ**: Email, số điện thoại, địa chỉ?
+5. **Câu hỏi thường gặp**: Khách hay hỏi về gì? (giá, giao hàng, bảo hành, đổi trả...)
+6. **Chính sách**: Chính sách đổi trả? Bảo hành? Thanh toán?
+7. **Escalation**: Làm gì khi không trả lời được? Chuyển cho ai?
+
+Khi user nói "done", "xong", "finish", hoặc bạn cảm thấy đã đủ thông tin (ít nhất 5-6 câu trả lời), hãy tóm tắt lại và hỏi xác nhận.
+
+Bắt đầu bằng cách giới thiệu bản thân và hỏi câu đầu tiên ngay!
+"""
+
+@app.post("/api/agents/{agent_id}/brainstorm")
+async def brainstorm_chat(agent_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Chat with brainstorm bot to configure agent"""
+    try:
+        agent = get_agent(agent_id)
+        
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        message = body.get("message", "").strip()
+        if not message:
+            raise HTTPException(400, "Message required")
+        
+        # Get or create brainstorm session
+        session = get_brainstorm_session(agent_id)
+        if not session:
+            session = create_brainstorm_session(agent_id)
+        
+        # Add user message
+        add_brainstorm_message(session["id"], "user", message)
+        
+        # Build conversation for LLM
+        messages = session.get("messages", [])
+        chat_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
+        
+        # Call LLM using agent's API key
+        api_key = agent.get("llm_api_key", "")
+        provider = agent.get("llm_provider", "openai")
+        model = agent.get("llm_model", "gpt-4o-mini")
+        
+        if not api_key:
+            return {"response": "Vui lòng cấu hình API key cho agent trước."}
+        
+        # Call LLM
+        bot_response = await call_llm_simple(
+            provider,
+            api_key,
+            model,
+            BRAINSTORM_SYSTEM_PROMPT,
+            chat_messages
+        )
+        
+        # Add assistant message
+        add_brainstorm_message(session["id"], "assistant", bot_response)
+        
+        return {
+            "response": bot_response,
+            "session_id": session["id"],
+            "message_count": len(messages) + 2
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Brainstorm error: {str(e)}")
+
+
+@app.post("/api/agents/{agent_id}/brainstorm/finalize")
+async def finalize_brainstorm_session(agent_id: str, user=Depends(get_current_user)):
+    """Finalize brainstorm and generate agent config"""
+    try:
+        agent = get_agent(agent_id)
+        
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        session = get_brainstorm_session(agent_id)
+        if not session:
+            raise HTTPException(404, "No active brainstorm session")
+        
+        # Build conversation
+        messages = session.get("messages", [])
+        chat_messages = [{"role": m["role"], "content": m["content"]} for m in messages]
+        
+        # Call LLM to generate config
+        generation_prompt = """Dựa trên cuộc trò chuyện trên, hãy tạo cấu hình agent theo format JSON sau:
+
+{
+  "system_prompt": "Prompt hệ thống chi tiết cho agent (200-300 từ, bao gồm: vai trò, giọng điệu, kiến thức sản phẩm/dịch vụ, chính sách, cách xử lý khi không biết)",
+  "faq_entries": [
+    {"title": "Câu hỏi", "content": "Câu trả lời", "category": "general"},
+    ...
+  ],
+  "business_profile": {
+    "business_type": "Mô tả ngắn",
+    "contact": {"email": "", "phone": "", "address": ""},
+    "business_hours": {
+      "monday": {"open": "09:00", "close": "18:00", "enabled": true},
+      "tuesday": {"open": "09:00", "close": "18:00", "enabled": true},
+      ...
+    },
+    "policies": {
+      "return": "Chính sách đổi trả",
+      "warranty": "Chính sách bảo hành",
+      "payment": "Phương thức thanh toán"
+    }
+  }
+}
+
+Trả về ONLY JSON, không có text khác. Đảm bảo system_prompt chi tiết và thực tế."""
+
+        api_key = agent.get("llm_api_key", "")
+        provider = agent.get("llm_provider", "openai")
+        model = agent.get("llm_model", "gpt-4o-mini")
+        
+        bot_response = await call_llm_simple(
+            provider,
+            api_key,
+            model,
+            "You are a JSON generator. Return only valid JSON.",
+            chat_messages + [{"role": "user", "content": generation_prompt}]
+        )
+        
+        # Parse JSON
+        import json
+        import re
+        
+        # Extract JSON from response (might have ```json wrapper)
+        json_match = re.search(r'```(?:json)?\s*(\{.*\})\s*```', bot_response, re.DOTALL)
+        if json_match:
+            json_str = json_match.group(1)
+        else:
+            json_str = bot_response
+        
+        generated_config = json.loads(json_str)
+        
+        # Finalize session
+        finalize_brainstorm(session["id"], generated_config)
+        
+        # Apply config to agent
+        update_data = {
+            "system_prompt": generated_config.get("system_prompt", ""),
+            "business_hours": generated_config.get("business_profile", {}).get("business_hours", {}),
+            "brainstorm_completed": True,
+        }
+        
+        update_agent(agent_id, update_data)
+        
+        # Create FAQ entries
+        for faq in generated_config.get("faq_entries", [])[:10]:  # Limit to 10
+            create_knowledge(agent_id, faq)
+            # Chunk immediately
+            kb_entries = list_knowledge(agent_id)
+            if kb_entries:
+                latest = kb_entries[0]
+                create_knowledge_chunks(latest["id"], agent_id, latest["content"])
+        
+        return {
+            "status": "success",
+            "config": generated_config
+        }
+    
+    except json.JSONDecodeError as e:
+        raise HTTPException(500, f"Failed to parse generated config: {str(e)}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Finalize error: {str(e)}")
+
+
+@app.get("/api/agents/{agent_id}/brainstorm")
+async def get_brainstorm_status(agent_id: str, user=Depends(get_current_user)):
+    """Get current brainstorm session"""
+    try:
+        agent = get_agent(agent_id)
+        
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        session = get_brainstorm_session(agent_id)
+        
+        if not session:
+            return {"session": None, "brainstorm_completed": agent.get("brainstorm_completed", False)}
+        
+        return {
+            "session": session,
+            "brainstorm_completed": agent.get("brainstorm_completed", False)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to get brainstorm: {str(e)}")
 
 
 # === CHANNEL MANAGEMENT ===
@@ -396,26 +644,9 @@ async def remove_channel_endpoint(agent_id: str, channel_type: str, user=Depends
 
 # === LLM PROXY ===
 
-async def call_llm(agent: dict, messages: list) -> str:
-    """Call LLM using the agent owner's API key"""
-    provider = agent.get("llm_provider", "openai")
-    api_key = agent.get("llm_api_key", "")
-    model = agent.get("llm_model", "gpt-4o-mini")
-    settings = agent.get("settings", {})
-    
-    if not api_key:
-        return settings.get("fallback_message", "API key chưa được cấu hình.")
-    
-    # Build context with knowledge base
-    kb_context = ""
-    kb_entries = list_knowledge(agent["id"])
-    if kb_entries:
-        kb_items = [f"## {k['title']}\n{k['content']}" for k in kb_entries[:20]]
-        kb_context = "\n\n---\nKiến thức tham khảo:\n" + "\n\n".join(kb_items)
-    
-    system_msg = agent.get("system_prompt", "Bạn là trợ lý AI.") + kb_context
-    
-    full_messages = [{"role": "system", "content": system_msg}] + messages
+async def call_llm_simple(provider: str, api_key: str, model: str, system_prompt: str, messages: list) -> str:
+    """Simple LLM call without tools (for brainstorm)"""
+    full_messages = [{"role": "system", "content": system_prompt}] + messages
     
     try:
         async with httpx.AsyncClient(timeout=30) as client:
@@ -426,8 +657,8 @@ async def call_llm(agent: dict, messages: list) -> str:
                     json={
                         "model": model,
                         "messages": full_messages,
-                        "max_tokens": settings.get("max_tokens", 500),
-                        "temperature": settings.get("temperature", 0.7)
+                        "max_tokens": 1000,
+                        "temperature": 0.7
                     },
                 )
                 data = resp.json()
@@ -446,8 +677,8 @@ async def call_llm(agent: dict, messages: list) -> str:
                     },
                     json={
                         "model": model,
-                        "max_tokens": settings.get("max_tokens", 500),
-                        "system": system_msg,
+                        "max_tokens": 1000,
+                        "system": system_prompt,
                         "messages": anthropic_msgs,
                     },
                 )
@@ -464,7 +695,7 @@ async def call_llm(agent: dict, messages: list) -> str:
                             {"parts": [{"text": m["content"]}], "role": "user" if m["role"] == "user" else "model"}
                             for m in full_messages if m["role"] != "system"
                         ],
-                        "systemInstruction": {"parts": [{"text": system_msg}]},
+                        "systemInstruction": {"parts": [{"text": system_prompt}]},
                     },
                 )
                 data = resp.json()
@@ -475,6 +706,186 @@ async def call_llm(agent: dict, messages: list) -> str:
     
     except Exception as e:
         return f"Error calling LLM: {str(e)}"
+
+
+async def run_agent(agent: dict, messages: list, conversation_id: str) -> str:
+    """
+    Run agent with RAG + Tool support
+    This replaces the old call_llm function
+    """
+    provider = agent.get("llm_provider", "openai")
+    api_key = agent.get("llm_api_key", "")
+    model = agent.get("llm_model", "gpt-4o-mini")
+    settings = agent.get("settings", {})
+    tools_enabled = agent.get("tools_enabled", [])
+    
+    if not api_key:
+        return settings.get("fallback_message", "API key chưa được cấu hình.")
+    
+    # === STEP 1: RAG - Search knowledge base ===
+    rag_context = ""
+    if messages and "search_knowledge" in tools_enabled:
+        last_user_msg = messages[-1]["content"] if messages[-1]["role"] == "user" else ""
+        if last_user_msg:
+            kb_results = search_knowledge(agent["id"], last_user_msg, limit=3)
+            if kb_results:
+                rag_items = [f"**{r.get('title', '')}**: {r['content']}" for r in kb_results]
+                rag_context = "\n\n---\n**Kiến thức tham khảo:**\n" + "\n\n".join(rag_items)
+    
+    # Build system prompt with RAG context
+    system_msg = agent.get("system_prompt", "Bạn là trợ lý AI.") + rag_context
+    
+    # === STEP 2: Get tool definitions ===
+    tools = get_tool_definitions(provider, tools_enabled) if tools_enabled else []
+    
+    # === STEP 3: Call LLM with tools (max 3 iterations) ===
+    full_messages = messages.copy()
+    max_iterations = 3
+    
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            for iteration in range(max_iterations):
+                
+                if provider == "openai":
+                    # OpenAI function calling
+                    payload = {
+                        "model": model,
+                        "messages": [{"role": "system", "content": system_msg}] + full_messages,
+                        "max_tokens": settings.get("max_tokens", 800),
+                        "temperature": settings.get("temperature", 0.7)
+                    }
+                    
+                    if tools:
+                        payload["tools"] = tools
+                        payload["tool_choice"] = "auto"
+                    
+                    resp = await client.post(
+                        "https://api.openai.com/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {api_key}"},
+                        json=payload,
+                    )
+                    data = resp.json()
+                    
+                    if "error" in data:
+                        return f"LLM Error: {data['error'].get('message', 'Unknown error')}"
+                    
+                    message = data["choices"][0]["message"]
+                    
+                    # Check if tool calls
+                    if message.get("tool_calls"):
+                        full_messages.append(message)
+                        
+                        # Execute tools
+                        for tool_call in message["tool_calls"]:
+                            tool_name = tool_call["function"]["name"]
+                            tool_args = json.loads(tool_call["function"]["arguments"])
+                            
+                            # Execute tool
+                            db_functions = {
+                                "search_knowledge": search_knowledge,
+                                "create_ticket": create_ticket,
+                                "get_supabase": get_supabase,
+                            }
+                            
+                            result = await execute_tool(tool_name, tool_args, agent, conversation_id, db_functions)
+                            
+                            # Add tool result to conversation
+                            full_messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call["id"],
+                                "content": json.dumps(result, ensure_ascii=False)
+                            })
+                        
+                        continue  # Next iteration
+                    else:
+                        # No tools, return response
+                        return message.get("content", "")
+                
+                elif provider == "anthropic":
+                    # Anthropic tool use
+                    payload = {
+                        "model": model,
+                        "max_tokens": settings.get("max_tokens", 800),
+                        "system": system_msg,
+                        "messages": full_messages,
+                    }
+                    
+                    if tools:
+                        payload["tools"] = tools
+                    
+                    resp = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": api_key,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json",
+                        },
+                        json=payload,
+                    )
+                    data = resp.json()
+                    
+                    if "error" in data:
+                        return f"LLM Error: {data['error'].get('message', 'Unknown error')}"
+                    
+                    content = data["content"]
+                    
+                    # Check if tool use
+                    tool_uses = [c for c in content if c.get("type") == "tool_use"]
+                    
+                    if tool_uses:
+                        # Add assistant message with tool_use
+                        full_messages.append({"role": "assistant", "content": content})
+                        
+                        # Execute tools
+                        tool_results = []
+                        for tool_use in tool_uses:
+                            tool_name = tool_use["name"]
+                            tool_args = tool_use["input"]
+                            
+                            db_functions = {
+                                "search_knowledge": search_knowledge,
+                                "create_ticket": create_ticket,
+                                "get_supabase": get_supabase,
+                            }
+                            
+                            result = await execute_tool(tool_name, tool_args, agent, conversation_id, db_functions)
+                            
+                            tool_results.append({
+                                "type": "tool_result",
+                                "tool_use_id": tool_use["id"],
+                                "content": json.dumps(result, ensure_ascii=False)
+                            })
+                        
+                        # Add tool results
+                        full_messages.append({"role": "user", "content": tool_results})
+                        
+                        continue  # Next iteration
+                    else:
+                        # No tools, return text
+                        text_blocks = [c.get("text", "") for c in content if c.get("type") == "text"]
+                        return " ".join(text_blocks)
+                
+                elif provider == "google":
+                    # Google Gemini (basic support, tools require more complex setup)
+                    # For now, run without tools
+                    resp = await client.post(
+                        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
+                        json={
+                            "contents": [
+                                {"parts": [{"text": m["content"]}], "role": "user" if m["role"] == "user" else "model"}
+                                for m in full_messages if m["role"] != "system"
+                            ],
+                            "systemInstruction": {"parts": [{"text": system_msg}]},
+                        },
+                    )
+                    data = resp.json()
+                    return data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "No response")
+            
+            # Max iterations reached, return last message
+            return "Đã đạt giới hạn lượt xử lý. Vui lòng thử lại."
+    
+    except Exception as e:
+        return f"Error running agent: {str(e)}"
 
 
 # === CHAT / MESSAGE HANDLING ===
@@ -511,8 +922,8 @@ async def chat_with_agent(agent_id: str, body: dict = Body(...)):
         recent = get_recent_messages(conv_id, limit=20)
         chat_messages = [{"role": m["role"], "content": m["content"]} for m in recent]
         
-        # Call LLM
-        response = await call_llm(agent, chat_messages)
+        # Run agent with RAG + Tools
+        response = await run_agent(agent, chat_messages, conv_id)
         
         # Save assistant message
         create_message(conv_id, "assistant", response)
@@ -575,6 +986,85 @@ async def get_conversation(agent_id: str, conv_id: str, user=Depends(get_current
         raise HTTPException(500, f"Failed to get conversation: {str(e)}")
 
 
+# === TICKETS ===
+
+@app.get("/api/agents/{agent_id}/tickets")
+async def get_tickets_endpoint(
+    agent_id: str,
+    status: Optional[str] = None,
+    priority: Optional[str] = None,
+    user=Depends(get_current_user)
+):
+    """List tickets for an agent"""
+    try:
+        agent = get_agent(agent_id)
+        
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        tickets = list_tickets(agent_id, status, priority)
+        
+        return {"tickets": tickets, "count": len(tickets)}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to list tickets: {str(e)}")
+
+
+@app.put("/api/agents/{agent_id}/tickets/{ticket_id}")
+async def update_ticket_endpoint(
+    agent_id: str,
+    ticket_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user)
+):
+    """Update ticket status or details"""
+    try:
+        agent = get_agent(agent_id)
+        
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        ticket = get_ticket(ticket_id)
+        if not ticket or ticket["agent_id"] != agent_id:
+            raise HTTPException(404, "Ticket not found")
+        
+        # Only allow updating specific fields
+        updatable = ["status", "priority", "category", "assigned_to", "tags"]
+        update_data = {k: v for k, v in body.items() if k in updatable}
+        
+        if update_data:
+            updated = update_ticket(ticket_id, update_data)
+            return {"status": "updated", "ticket": updated}
+        
+        return {"status": "no changes"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to update ticket: {str(e)}")
+
+
+@app.get("/api/agents/{agent_id}/tickets/stats")
+async def get_ticket_stats_endpoint(agent_id: str, user=Depends(get_current_user)):
+    """Get ticket statistics"""
+    try:
+        agent = get_agent(agent_id)
+        
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        stats = get_ticket_stats(agent_id)
+        
+        return stats
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to get ticket stats: {str(e)}")
+
+
 # === TELEGRAM WEBHOOK ===
 
 @app.post("/api/webhook/telegram/{agent_id}")
@@ -610,8 +1100,8 @@ async def telegram_webhook(agent_id: str, body: dict = Body(...)):
         recent = get_recent_messages(conv_id, limit=20)
         chat_messages = [{"role": m["role"], "content": m["content"]} for m in recent]
         
-        # Get AI response
-        response = await call_llm(agent, chat_messages)
+        # Get AI response with RAG + Tools
+        response = await run_agent(agent, chat_messages, conv_id)
         
         # Save assistant message
         create_message(conv_id, "assistant", response)
@@ -700,8 +1190,8 @@ async def facebook_webhook(agent_id: str, body: dict = Body(...)):
                 recent = get_recent_messages(conv_id, limit=20)
                 chat_messages = [{"role": m["role"], "content": m["content"]} for m in recent]
                 
-                # Get AI response
-                response = await call_llm(agent, chat_messages)
+                # Get AI response with RAG + Tools
+                response = await run_agent(agent, chat_messages, conv_id)
                 
                 # Save assistant message
                 create_message(conv_id, "assistant", response)

@@ -330,3 +330,259 @@ def get_user_stats(user_id: str) -> Dict[str, Any]:
         "messages": total_messages,
         "plan": plan,
     }
+
+
+# === KNOWLEDGE CHUNKS (RAG) ===
+
+def chunk_text(text: str, chunk_size: int = 500, overlap: int = 100) -> List[str]:
+    """Split text into overlapping chunks"""
+    if len(text) <= chunk_size:
+        return [text]
+    
+    chunks = []
+    start = 0
+    
+    while start < len(text):
+        end = start + chunk_size
+        
+        # Try to break at sentence boundary
+        if end < len(text):
+            # Look for sentence endings near the chunk boundary
+            for punct in ['. ', '! ', '? ', '\n\n', '\n']:
+                last_punct = text.rfind(punct, start, end)
+                if last_punct != -1:
+                    end = last_punct + len(punct)
+                    break
+        
+        chunks.append(text[start:end].strip())
+        start = end - overlap if end < len(text) else end
+    
+    return chunks
+
+
+def create_knowledge_chunks(knowledge_id: str, agent_id: str, content: str):
+    """Create chunks for a knowledge base entry"""
+    sb = get_supabase()
+    
+    # Delete old chunks
+    sb.table("knowledge_chunks").delete().eq("knowledge_id", knowledge_id).execute()
+    
+    # Create new chunks
+    chunks = chunk_text(content)
+    chunk_data = [
+        {
+            "knowledge_id": knowledge_id,
+            "agent_id": agent_id,
+            "content": chunk,
+            "chunk_index": i,
+        }
+        for i, chunk in enumerate(chunks)
+    ]
+    
+    if chunk_data:
+        sb.table("knowledge_chunks").insert(chunk_data).execute()
+    
+    # Update chunk count
+    sb.table("knowledge_base").update({"chunk_count": len(chunks)}).eq("id", knowledge_id).execute()
+    
+    return len(chunks)
+
+
+def search_knowledge(agent_id: str, query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """Search knowledge base using PostgreSQL full-text search"""
+    sb = get_supabase()
+    
+    try:
+        # Try full-text search with to_tsquery
+        # Note: Supabase client doesn't support textSearchQuery directly, so we use rpc or raw query
+        # For now, use ILIKE fallback (production should use stored procedure)
+        
+        # Fallback to ILIKE keyword matching
+        keywords = query.split()[:5]  # Limit to 5 keywords
+        
+        results = []
+        seen_knowledge_ids = set()
+        
+        for keyword in keywords:
+            if len(keyword) < 2:
+                continue
+            
+            chunk_results = sb.table("knowledge_chunks") \
+                .select("id, knowledge_id, content, chunk_index") \
+                .eq("agent_id", agent_id) \
+                .ilike("content", f"%{keyword}%") \
+                .limit(limit) \
+                .execute()
+            
+            for chunk in chunk_results.data:
+                kid = chunk["knowledge_id"]
+                if kid not in seen_knowledge_ids:
+                    # Get knowledge entry title
+                    kb_entry = sb.table("knowledge_base").select("title, category").eq("id", kid).execute()
+                    if kb_entry.data:
+                        chunk["title"] = kb_entry.data[0].get("title", "")
+                        chunk["category"] = kb_entry.data[0].get("category", "")
+                        results.append(chunk)
+                        seen_knowledge_ids.add(kid)
+                        
+                        if len(results) >= limit:
+                            break
+            
+            if len(results) >= limit:
+                break
+        
+        return results[:limit]
+    
+    except Exception as e:
+        print(f"Knowledge search error: {e}")
+        return []
+
+
+# === BRAINSTORM SESSIONS ===
+
+def get_brainstorm_session(agent_id: str) -> Optional[Dict[str, Any]]:
+    """Get active brainstorm session for agent"""
+    sb = get_supabase()
+    result = sb.table("brainstorm_sessions") \
+        .select("*") \
+        .eq("agent_id", agent_id) \
+        .eq("status", "active") \
+        .order("created_at", desc=True) \
+        .limit(1) \
+        .execute()
+    return result.data[0] if result.data else None
+
+
+def create_brainstorm_session(agent_id: str) -> Dict[str, Any]:
+    """Create a new brainstorm session"""
+    sb = get_supabase()
+    session_data = {
+        "agent_id": agent_id,
+        "messages": [],
+        "status": "active",
+    }
+    result = sb.table("brainstorm_sessions").insert(session_data).execute()
+    return result.data[0] if result.data else None
+
+
+def add_brainstorm_message(session_id: str, role: str, content: str) -> Dict[str, Any]:
+    """Add message to brainstorm session"""
+    sb = get_supabase()
+    
+    # Get current session
+    session = sb.table("brainstorm_sessions").select("*").eq("id", session_id).execute()
+    if not session.data:
+        return None
+    
+    messages = session.data[0].get("messages", [])
+    messages.append({
+        "role": role,
+        "content": content,
+        "timestamp": datetime.utcnow().isoformat(),
+    })
+    
+    result = sb.table("brainstorm_sessions").update({"messages": messages}).eq("id", session_id).execute()
+    return result.data[0] if result.data else None
+
+
+def finalize_brainstorm(session_id: str, generated_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Finalize brainstorm session with generated config"""
+    sb = get_supabase()
+    result = sb.table("brainstorm_sessions").update({
+        "status": "finalized",
+        "generated_config": generated_config,
+    }).eq("id", session_id).execute()
+    return result.data[0] if result.data else None
+
+
+# === TICKETS ===
+
+def list_tickets(agent_id: str, status: Optional[str] = None, priority: Optional[str] = None) -> List[Dict[str, Any]]:
+    """List tickets for an agent with optional filters"""
+    sb = get_supabase()
+    query = sb.table("tickets").select("*").eq("agent_id", agent_id)
+    
+    if status:
+        query = query.eq("status", status)
+    if priority:
+        query = query.eq("priority", priority)
+    
+    result = query.order("created_at", desc=True).execute()
+    return result.data
+
+
+def get_ticket(ticket_id: str) -> Optional[Dict[str, Any]]:
+    """Get ticket by ID"""
+    sb = get_supabase()
+    result = sb.table("tickets").select("*").eq("id", ticket_id).execute()
+    return result.data[0] if result.data else None
+
+
+def create_ticket(agent_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    """Create a support ticket"""
+    sb = get_supabase()
+    ticket_data = {
+        "agent_id": agent_id,
+        "conversation_id": data.get("conversation_id"),
+        "customer_name": data.get("customer_name"),
+        "customer_phone": data.get("customer_phone"),
+        "customer_email": data.get("customer_email"),
+        "subject": data.get("subject", "Support Request"),
+        "description": data.get("description", ""),
+        "priority": data.get("priority", "medium"),
+        "category": data.get("category", "general"),
+        "tags": data.get("tags", []),
+    }
+    result = sb.table("tickets").insert(ticket_data).execute()
+    return result.data[0] if result.data else None
+
+
+def update_ticket(ticket_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    """Update ticket"""
+    sb = get_supabase()
+    
+    # Auto-set resolved_at if status is resolved/closed
+    if data.get("status") in ("resolved", "closed"):
+        ticket = get_ticket(ticket_id)
+        if ticket and not ticket.get("resolved_at"):
+            data["resolved_at"] = datetime.utcnow().isoformat()
+    
+    result = sb.table("tickets").update(data).eq("id", ticket_id).execute()
+    return result.data[0] if result.data else None
+
+
+def get_ticket_stats(agent_id: str) -> Dict[str, Any]:
+    """Get ticket statistics for agent"""
+    sb = get_supabase()
+    
+    tickets = list_tickets(agent_id)
+    
+    stats = {
+        "total": len(tickets),
+        "open": sum(1 for t in tickets if t["status"] == "open"),
+        "in_progress": sum(1 for t in tickets if t["status"] == "in_progress"),
+        "resolved": sum(1 for t in tickets if t["status"] == "resolved"),
+        "closed": sum(1 for t in tickets if t["status"] == "closed"),
+        "by_priority": {
+            "low": sum(1 for t in tickets if t["priority"] == "low"),
+            "medium": sum(1 for t in tickets if t["priority"] == "medium"),
+            "high": sum(1 for t in tickets if t["priority"] == "high"),
+            "urgent": sum(1 for t in tickets if t["priority"] == "urgent"),
+        }
+    }
+    
+    # Calculate average resolution time
+    resolved_tickets = [t for t in tickets if t.get("resolved_at")]
+    if resolved_tickets:
+        total_seconds = 0
+        for ticket in resolved_tickets:
+            created = datetime.fromisoformat(ticket["created_at"].replace("Z", "+00:00"))
+            resolved = datetime.fromisoformat(ticket["resolved_at"].replace("Z", "+00:00"))
+            total_seconds += (resolved - created).total_seconds()
+        
+        avg_hours = (total_seconds / len(resolved_tickets)) / 3600
+        stats["avg_resolution_hours"] = round(avg_hours, 1)
+    else:
+        stats["avg_resolution_hours"] = 0
+    
+    return stats

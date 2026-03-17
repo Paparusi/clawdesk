@@ -1044,6 +1044,26 @@
     </div>
 </div>
 
+<!-- BRAINSTORM MODAL -->
+<div class="modal-overlay" id="brainstormModal">
+    <div class="modal" style="max-width: 700px; height: 80vh; display: flex; flex-direction: column;">
+        <div class="modal-header">
+            <h4>💬 Chat để thiết lập Agent</h4>
+            <button class="modal-close" onclick="closeBrainstorm()">×</button>
+        </div>
+        <div id="brainstormChat" style="flex: 1; overflow-y: auto; padding: 20px; background: var(--bg-base); border-radius: 12px; margin-bottom: 16px;">
+            <div style="text-align: center; color: var(--text-secondary); padding: 40px 0;">
+                Đang tải...
+            </div>
+        </div>
+        <div style="display: flex; gap: 12px;">
+            <input type="text" id="brainstormInput" placeholder="Nhập tin nhắn..." style="flex: 1;" onkeypress="if(event.key==='Enter') sendBrainstormMsg()">
+            <button class="btn btn-primary" onclick="sendBrainstormMsg()">Gửi</button>
+            <button class="btn btn-success" onclick="finalizeBrainstorm()">✓ Hoàn tất thiết lập</button>
+        </div>
+    </div>
+</div>
+
 <!-- COMMAND PALETTE -->
 <div class="cmd-palette-overlay" id="cmdPalette">
     <div class="cmd-palette">
@@ -1487,6 +1507,8 @@ async function renderAgent() {
         <div class="tabs">
             <div class="tab ${currentTab==='settings'?'active':''}" onclick="switchAgentTab('settings')">⚙️ Cài đặt</div>
             <div class="tab ${currentTab==='knowledge'?'active':''}" onclick="switchAgentTab('knowledge')">📚 Kiến thức</div>
+            <div class="tab ${currentTab==='tools'?'active':''}" onclick="switchAgentTab('tools')">🔧 Tools</div>
+            <div class="tab ${currentTab==='tickets'?'active':''}" onclick="switchAgentTab('tickets')">🎫 Tickets</div>
             <div class="tab ${currentTab==='channels'?'active':''}" onclick="switchAgentTab('channels')">🔗 Kênh chat</div>
             <div class="tab ${currentTab==='convos'?'active':''}" onclick="switchAgentTab('convos')">💬 Hội thoại</div>
         </div>
@@ -1498,8 +1520,8 @@ async function renderAgent() {
 function switchAgentTab(tab) {
     currentTab = tab;
     document.querySelectorAll('.tab').forEach((t,i) => {
-        const labels = ['⚙️ Cài đặt', '📚 Kiến thức', '🔗 Kênh chat', '💬 Hội thoại'];
-        t.classList.toggle('active', t.textContent.trim() === labels[['settings','knowledge','channels','convos'].indexOf(tab)]);
+        const labels = ['⚙️ Cài đặt', '📚 Kiến thức', '🔧 Tools', '🎫 Tickets', '🔗 Kênh chat', '💬 Hội thoại'];
+        t.classList.toggle('active', t.textContent.trim() === labels[['settings','knowledge','tools','tickets','channels','convos'].indexOf(tab)]);
     });
     renderAgentTab();
 }
@@ -1509,6 +1531,8 @@ function renderAgentTab() {
     if (!el) return;
     if (currentTab === 'settings') renderSettingsTab(el);
     else if (currentTab === 'knowledge') renderKnowledgeTab(el);
+    else if (currentTab === 'tools') renderToolsTab(el);
+    else if (currentTab === 'tickets') renderTicketsTab(el);
     else if (currentTab === 'channels') renderChannelsTab(el);
     else if (currentTab === 'convos') renderConvosTab(el);
 }
@@ -1522,6 +1546,8 @@ function renderSettingsTab(el) {
         google: ['gemini-1.5-flash','gemini-1.5-pro','gemini-pro'],
     };
     const providerModels = models[a.llm_provider] || models.openai;
+    
+    const brainstormCompleted = a.brainstorm_completed || false;
 
     el.innerHTML = `
         <div class="form-section">
@@ -1535,8 +1561,13 @@ function renderSettingsTab(el) {
                 <input type="text" id="agentDesc" value="${esc(a.description || '')}">
             </div>
             <div class="form-row">
-                <label>System Prompt</label>
-                <textarea id="agentPrompt" rows="5">${esc(a.system_prompt)}</textarea>
+                <label>System Prompt
+                    ${!brainstormCompleted && a.llm_api_key ? 
+                        '<button class="btn btn-primary btn-sm" style="float:right" onclick="openBrainstorm()">💬 Chat để thiết lập</button>' 
+                        : ''}
+                </label>
+                <textarea id="agentPrompt" rows="5" ${!brainstormCompleted ? 'readonly' : ''}>${esc(a.system_prompt)}</textarea>
+                ${!brainstormCompleted ? '<div class="form-hint">💡 Sử dụng "Chat để thiết lập" để AI tự động tạo prompt cho bạn!</div>' : ''}
             </div>
         </div>
         
@@ -1621,6 +1652,134 @@ async function deleteAgent() {
     });
 }
 
+// BRAINSTORM
+let brainstormSession = null;
+
+async function openBrainstorm() {
+    document.getElementById('brainstormModal').classList.add('active');
+    
+    // Load or create session
+    try {
+        const res = await api(`/api/agents/${currentAgent.id}/brainstorm`);
+        brainstormSession = res.session;
+        
+        if (!brainstormSession) {
+            // Start new session with initial message
+            await sendBrainstormMsg('Xin chào! Tôi muốn thiết lập agent.', true);
+        } else {
+            renderBrainstormChat();
+        }
+    } catch(e) {
+        document.getElementById('brainstormChat').innerHTML = `<div style="color:var(--red)">Lỗi: ${e.message}</div>`;
+    }
+}
+
+function closeBrainstorm() {
+    document.getElementById('brainstormModal').classList.remove('active');
+}
+
+function renderBrainstormChat() {
+    const messages = brainstormSession?.messages || [];
+    const chatEl = document.getElementById('brainstormChat');
+    
+    if (messages.length === 0) {
+        chatEl.innerHTML = '<div style="text-align: center; color: var(--text-secondary); padding: 40px 0;">Bắt đầu trò chuyện để thiết lập agent của bạn!</div>';
+        return;
+    }
+    
+    chatEl.innerHTML = messages.map(m => `
+        <div style="margin-bottom: 16px; text-align: ${m.role === 'user' ? 'right' : 'left'};">
+            <div style="display: inline-block; max-width: 80%; padding: 12px 16px; border-radius: 16px; 
+                        background: ${m.role === 'user' ? 'var(--accent)' : 'var(--bg-elevated)'};
+                        color: ${m.role === 'user' ? '#fff' : 'var(--text-primary)'};
+                        text-align: left; white-space: pre-wrap;">
+                ${esc(m.content)}
+            </div>
+        </div>
+    `).join('');
+    
+    // Scroll to bottom
+    chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+async function sendBrainstormMsg(customMsg = null, skipInput = false) {
+    const input = document.getElementById('brainstormInput');
+    const message = customMsg || input.value.trim();
+    
+    if (!message) return;
+    
+    if (!skipInput) input.value = '';
+    
+    // Add user message to UI immediately
+    const chatEl = document.getElementById('brainstormChat');
+    chatEl.innerHTML += `
+        <div style="margin-bottom: 16px; text-align: right;">
+            <div style="display: inline-block; max-width: 80%; padding: 12px 16px; border-radius: 16px; 
+                        background: var(--accent); color: #fff; text-align: left; white-space: pre-wrap;">
+                ${esc(message)}
+            </div>
+        </div>
+    `;
+    chatEl.scrollTop = chatEl.scrollHeight;
+    
+    // Show loading
+    chatEl.innerHTML += '<div id="brainstormLoading" style="margin-bottom: 16px;"><div style="display: inline-block; padding: 12px 16px; border-radius: 16px; background: var(--bg-elevated); color: var(--text-secondary);">...</div></div>';
+    chatEl.scrollTop = chatEl.scrollHeight;
+    
+    try {
+        const res = await api(`/api/agents/${currentAgent.id}/brainstorm`, {
+            method: 'POST',
+            body: JSON.stringify({ message })
+        });
+        
+        brainstormSession = { ...brainstormSession, messages: [...(brainstormSession?.messages || []), { role: 'user', content: message }, { role: 'assistant', content: res.response }] };
+        
+        // Remove loading
+        document.getElementById('brainstormLoading')?.remove();
+        
+        // Add assistant response
+        chatEl.innerHTML += `
+            <div style="margin-bottom: 16px; text-align: left;">
+                <div style="display: inline-block; max-width: 80%; padding: 12px 16px; border-radius: 16px; 
+                            background: var(--bg-elevated); color: var(--text-primary); text-align: left; white-space: pre-wrap;">
+                    ${esc(res.response)}
+                </div>
+            </div>
+        `;
+        chatEl.scrollTop = chatEl.scrollHeight;
+        
+    } catch(e) {
+        document.getElementById('brainstormLoading')?.remove();
+        chatEl.innerHTML += `<div style="color:var(--red); padding: 12px;">Lỗi: ${e.message}</div>`;
+    }
+}
+
+async function finalizeBrainstorm() {
+    if (!brainstormSession || !brainstormSession.messages || brainstormSession.messages.length < 6) {
+        toast('Vui lòng trò chuyện thêm để AI hiểu rõ doanh nghiệp của bạn (ít nhất 3 câu hỏi)', '⚠️');
+        return;
+    }
+    
+    const chatEl = document.getElementById('brainstormChat');
+    chatEl.innerHTML += '<div style="text-align: center; padding: 20px; color: var(--accent);">🤖 Đang tạo cấu hình...</div>';
+    chatEl.scrollTop = chatEl.scrollHeight;
+    
+    try {
+        const res = await api(`/api/agents/${currentAgent.id}/brainstorm/finalize`, {
+            method: 'POST'
+        });
+        
+        toast('✨ Đã tạo cấu hình thành công!', '✓');
+        closeBrainstorm();
+        
+        // Reload agent
+        await renderAgent();
+        
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
 // KNOWLEDGE
 function renderKnowledgeTab(el) {
     const kb = currentAgent.knowledge_base || [];
@@ -1629,9 +1788,11 @@ function renderKnowledgeTab(el) {
             <div class="kb-header">
                 <h3>Kiến thức (${kb.length} mục)</h3>
                 <div class="kb-search">
-                    <input type="text" placeholder="Tìm kiếm..." id="kbSearch">
+                    <input type="text" placeholder="Test tìm kiếm..." id="kbSearchTest">
+                    <button class="btn btn-ghost btn-sm" onclick="testKBSearch()">🔍 Test Search</button>
                 </div>
             </div>
+            <div id="kbSearchResults" style="margin-bottom: 16px;"></div>
             <div class="form-row">
                 <label>Tiêu đề</label>
                 <input type="text" id="kbTitle" placeholder="VD: Chính sách đổi trả">
@@ -1693,6 +1854,45 @@ async function deleteKB(entryId) {
         renderAgent();
     } catch(e) {
         toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function testKBSearch() {
+    const query = document.getElementById('kbSearchTest').value.trim();
+    if (!query) {
+        toast('Nhập từ khóa để tìm kiếm', '⚠️');
+        return;
+    }
+    
+    const resultsEl = document.getElementById('kbSearchResults');
+    resultsEl.innerHTML = '<div style="padding: 12px; color: var(--text-secondary);">Đang tìm...</div>';
+    
+    try {
+        const res = await api(`/api/agents/${currentAgent.id}/knowledge/search`, {
+            method: 'POST',
+            body: JSON.stringify({ query, limit: 5 })
+        });
+        
+        if (res.results.length === 0) {
+            resultsEl.innerHTML = '<div style="padding: 12px; color: var(--text-secondary);">Không tìm thấy kết quả</div>';
+            return;
+        }
+        
+        resultsEl.innerHTML = `
+            <div style="background: var(--bg-elevated); border-radius: 12px; padding: 16px;">
+                <h4 style="margin-bottom: 12px; color: var(--accent);">🔍 Kết quả tìm kiếm (${res.count})</h4>
+                ${res.results.map(r => `
+                    <div style="margin-bottom: 12px; padding: 12px; background: var(--bg-base); border-radius: 8px;">
+                        <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${esc(r.title || 'N/A')}</div>
+                        <div style="font-size: 13px; color: var(--text-secondary);">${esc(r.content).substring(0, 200)}...</div>
+                        <div style="font-size: 11px; color: var(--text-secondary); margin-top: 4px;">Chunk ${r.chunk_index + 1} | ${r.category}</div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        
+    } catch(e) {
+        resultsEl.innerHTML = `<div style="color:var(--red); padding: 12px;">Lỗi: ${e.message}</div>`;
     }
 }
 
@@ -1849,6 +2049,285 @@ function copyEmbed() {
     const code = document.getElementById('embedCode').textContent.replace('Copy','').trim();
     navigator.clipboard.writeText(code);
     toast('Đã copy!', '📋');
+}
+
+// TOOLS
+function renderToolsTab(el) {
+    const a = currentAgent;
+    const toolsEnabled = a.tools_enabled || ['search_knowledge', 'collect_customer_info', 'check_business_hours', 'send_faq_answer', 'tag_conversation'];
+    const businessHours = a.business_hours || {};
+    const escalationConfig = a.escalation_config || { email: '', telegram_chat_id: '' };
+    
+    const allTools = [
+        { id: 'search_knowledge', name: 'Tìm kiếm kiến thức', desc: 'Tự động tìm trong KB khi khách hỏi' },
+        { id: 'escalate_to_human', name: 'Chuyển cho người', desc: 'Gửi thông báo khi cần hỗ trợ' },
+        { id: 'collect_customer_info', name: 'Thu thập thông tin', desc: 'Lưu tên, SĐT, email khách hàng' },
+        { id: 'create_ticket', name: 'Tạo ticket', desc: 'Tạo ticket hỗ trợ tự động' },
+        { id: 'check_business_hours', name: 'Kiểm tra giờ làm việc', desc: 'Cho biết đang mở/đóng cửa' },
+        { id: 'send_faq_answer', name: 'Gửi câu trả lời FAQ', desc: 'Tìm và gửi FAQ có sẵn' },
+        { id: 'tag_conversation', name: 'Gắn thẻ hội thoại', desc: 'Phân loại: sale, complaint, etc.' },
+        { id: 'transfer_conversation', name: 'Chuyển phòng ban', desc: 'Chuyển sang bộ phận khác' }
+    ];
+    
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const dayLabels = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'];
+    
+    el.innerHTML = `
+        <div class="form-section">
+            <h3>🔧 Công cụ CSKH</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 16px;">Bật các tool để agent có thể thực hiện các hành động tự động</p>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; margin-bottom: 24px;">
+                ${allTools.map(tool => `
+                    <div style="padding: 16px; background: var(--bg-elevated); border-radius: 12px; border: 2px solid ${toolsEnabled.includes(tool.id) ? 'var(--accent)' : 'var(--border)'};">
+                        <label style="display: flex; align-items: start; cursor: pointer;">
+                            <input type="checkbox" id="tool_${tool.id}" ${toolsEnabled.includes(tool.id) ? 'checked' : ''} 
+                                   onchange="toggleTool('${tool.id}')" style="margin-right: 12px; margin-top: 2px;">
+                            <div>
+                                <div style="font-weight: 600; color: var(--text-primary); margin-bottom: 4px;">${tool.name}</div>
+                                <div style="font-size: 13px; color: var(--text-secondary);">${tool.desc}</div>
+                            </div>
+                        </label>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+        
+        <div class="form-section">
+            <h3>⏰ Giờ làm việc</h3>
+            <div style="margin-top: 16px;">
+                ${days.map((day, i) => {
+                    const dayHours = businessHours[day] || { open: '09:00', close: '18:00', enabled: day !== 'sunday' && day !== 'saturday' };
+                    return `
+                        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px; padding: 12px; background: var(--bg-elevated); border-radius: 8px;">
+                            <input type="checkbox" id="day_${day}" ${dayHours.enabled ? 'checked' : ''} onchange="updateBusinessHours()">
+                            <label for="day_${day}" style="width: 80px; font-weight: 500;">${dayLabels[i]}</label>
+                            <input type="time" id="open_${day}" value="${dayHours.open || '09:00'}" style="width: 100px;" onchange="updateBusinessHours()">
+                            <span>-</span>
+                            <input type="time" id="close_${day}" value="${dayHours.close || '18:00'}" style="width: 100px;" onchange="updateBusinessHours()">
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        </div>
+        
+        <div class="form-section">
+            <h3>🚨 Cấu hình Escalation</h3>
+            <p style="color: var(--text-secondary); margin-bottom: 16px;">Khi agent cần chuyển cho người, gửi thông báo đến:</p>
+            <div class="form-row">
+                <label>Email</label>
+                <input type="email" id="escalationEmail" value="${esc(escalationConfig.email || '')}" placeholder="support@company.com">
+            </div>
+            <div class="form-row">
+                <label>Telegram Chat ID</label>
+                <input type="text" id="escalationTelegram" value="${esc(escalationConfig.telegram_chat_id || '')}" placeholder="-1001234567890">
+                <div class="form-hint">Để lấy chat ID: gửi tin nhắn cho bot @userinfobot</div>
+            </div>
+            <button class="btn btn-primary" onclick="saveToolsConfig()">💾 Lưu cấu hình</button>
+        </div>
+    `;
+}
+
+async function toggleTool(toolId) {
+    const checkbox = document.getElementById(`tool_${toolId}`);
+    const toolsEnabled = currentAgent.tools_enabled || [];
+    
+    let newTools;
+    if (checkbox.checked) {
+        newTools = [...new Set([...toolsEnabled, toolId])];
+    } else {
+        newTools = toolsEnabled.filter(t => t !== toolId);
+    }
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ tools_enabled: newTools })
+        });
+        currentAgent.tools_enabled = newTools;
+        toast('Đã cập nhật!', '✓');
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+        checkbox.checked = !checkbox.checked;
+    }
+}
+
+async function updateBusinessHours() {
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    const hours = {};
+    
+    days.forEach(day => {
+        hours[day] = {
+            enabled: document.getElementById(`day_${day}`).checked,
+            open: document.getElementById(`open_${day}`).value,
+            close: document.getElementById(`close_${day}`).value
+        };
+    });
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ business_hours: hours })
+        });
+        currentAgent.business_hours = hours;
+        toast('Đã cập nhật giờ làm việc!', '✓');
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function saveToolsConfig() {
+    const escalationConfig = {
+        email: document.getElementById('escalationEmail').value,
+        telegram_chat_id: document.getElementById('escalationTelegram').value
+    };
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ escalation_config: escalationConfig })
+        });
+        currentAgent.escalation_config = escalationConfig;
+        toast('Đã lưu cấu hình!', '✓');
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+// TICKETS
+async function renderTicketsTab(el) {
+    el.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-secondary);">Đang tải...</div>';
+    
+    try {
+        const [ticketsRes, statsRes] = await Promise.all([
+            api(`/api/agents/${currentAgent.id}/tickets`),
+            api(`/api/agents/${currentAgent.id}/tickets/stats`)
+        ]);
+        
+        const tickets = ticketsRes.tickets || [];
+        const stats = statsRes;
+        
+        el.innerHTML = `
+            <div class="stats-row" style="margin-bottom: 24px;">
+                <div class="stat-card">
+                    <div class="stat-label">Tổng tickets</div>
+                    <div class="stat-value">${stats.total || 0}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Đang mở</div>
+                    <div class="stat-value" style="color: var(--orange)">${stats.open || 0}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Đang xử lý</div>
+                    <div class="stat-value" style="color: var(--accent)">${stats.in_progress || 0}</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Đã giải quyết</div>
+                    <div class="stat-value" style="color: var(--green)">${stats.resolved || 0}</div>
+                </div>
+            </div>
+            
+            <div class="form-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h3>🎫 Danh sách Tickets</h3>
+                    <div style="display: flex; gap: 8px;">
+                        <select id="ticketStatusFilter" onchange="filterTickets()" style="padding: 8px; border-radius: 8px;">
+                            <option value="">Tất cả trạng thái</option>
+                            <option value="open">Open</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="resolved">Resolved</option>
+                            <option value="closed">Closed</option>
+                        </select>
+                        <select id="ticketPriorityFilter" onchange="filterTickets()" style="padding: 8px; border-radius: 8px;">
+                            <option value="">Tất cả mức độ</option>
+                            <option value="urgent">Urgent</option>
+                            <option value="high">High</option>
+                            <option value="medium">Medium</option>
+                            <option value="low">Low</option>
+                        </select>
+                    </div>
+                </div>
+                
+                ${tickets.length === 0 ? `
+                    <div class="empty-state">
+                        <div class="empty-illustration">🎫</div>
+                        <h3>Chưa có ticket nào</h3>
+                        <p>Tickets sẽ được tạo tự động khi agent xử lý yêu cầu hỗ trợ</p>
+                    </div>
+                ` : `
+                    <div id="ticketsList">
+                        ${renderTicketsList(tickets)}
+                    </div>
+                `}
+            </div>
+        `;
+    } catch(e) {
+        el.innerHTML = `<div style="color:var(--red); padding: 40px; text-align: center;">Lỗi: ${e.message}</div>`;
+    }
+}
+
+function renderTicketsList(tickets) {
+    const priorityColors = { urgent: 'var(--red)', high: 'var(--orange)', medium: 'var(--accent)', low: 'var(--text-secondary)' };
+    const statusColors = { open: 'var(--orange)', in_progress: 'var(--accent)', resolved: 'var(--green)', closed: 'var(--text-secondary)' };
+    
+    return tickets.map(t => `
+        <div style="padding: 16px; background: var(--bg-elevated); border-radius: 12px; margin-bottom: 12px; border-left: 4px solid ${priorityColors[t.priority]};">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                <div>
+                    <h4 style="color: var(--text-primary); margin-bottom: 4px;">${esc(t.subject)}</h4>
+                    <div style="font-size: 13px; color: var(--text-secondary);">${esc(t.description || '').substring(0, 150)}${(t.description || '').length > 150 ? '...' : ''}</div>
+                </div>
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <span style="padding: 4px 10px; border-radius: 100px; font-size: 11px; font-weight: 600; background: ${statusColors[t.status]}; color: #fff;">
+                        ${t.status.toUpperCase()}
+                    </span>
+                    <span style="padding: 4px 10px; border-radius: 100px; font-size: 11px; font-weight: 600; background: ${priorityColors[t.priority]}; color: #fff;">
+                        ${t.priority.toUpperCase()}
+                    </span>
+                </div>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--text-secondary);">
+                <div>
+                    ${t.customer_name ? `👤 ${esc(t.customer_name)}` : ''}
+                    ${t.customer_phone ? ` | 📞 ${esc(t.customer_phone)}` : ''}
+                    ${t.category ? ` | 🏷️ ${t.category}` : ''}
+                </div>
+                <div>${new Date(t.created_at).toLocaleString('vi-VN')}</div>
+            </div>
+            ${t.status === 'open' || t.status === 'in_progress' ? `
+                <div style="margin-top: 12px; display: flex; gap: 8px;">
+                    <button class="btn btn-ghost btn-sm" onclick="updateTicketStatus('${t.id}', 'in_progress')">▶️ Đang xử lý</button>
+                    <button class="btn btn-success btn-sm" onclick="updateTicketStatus('${t.id}', 'resolved')">✓ Đã giải quyết</button>
+                    <button class="btn btn-ghost btn-sm" onclick="updateTicketStatus('${t.id}', 'closed')">✕ Đóng</button>
+                </div>
+            ` : ''}
+        </div>
+    `).join('');
+}
+
+async function updateTicketStatus(ticketId, status) {
+    try {
+        await api(`/api/agents/${currentAgent.id}/tickets/${ticketId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ status })
+        });
+        toast('Đã cập nhật trạng thái!', '✓');
+        renderAgent();
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function filterTickets() {
+    const status = document.getElementById('ticketStatusFilter').value;
+    const priority = document.getElementById('ticketPriorityFilter').value;
+    
+    try {
+        const res = await api(`/api/agents/${currentAgent.id}/tickets?${status ? `status=${status}` : ''}${priority ? `&priority=${priority}` : ''}`);
+        document.getElementById('ticketsList').innerHTML = renderTicketsList(res.tickets || []);
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
 }
 
 // CONVOS
