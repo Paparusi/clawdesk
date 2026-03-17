@@ -6,7 +6,8 @@ Provides clean separation of DB operations
 import os
 from typing import Optional, Dict, Any, List
 from supabase import create_client, Client
-from jose import jwt, JWTError
+from jose import jwt, JWTError, jwk
+import httpx as _httpx
 from fastapi import HTTPException, Header
 from datetime import datetime
 
@@ -40,10 +41,46 @@ def get_supabase_anon() -> Client:
     return _supabase_anon
 
 
+# Cache JWKS keys
+_jwks_cache = {"keys": None}
+
+def _get_jwks():
+    """Fetch and cache JWKS from Supabase"""
+    if _jwks_cache["keys"] is None:
+        try:
+            r = _httpx.get(
+                f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json",
+                headers={"apikey": SUPABASE_ANON_KEY},
+                timeout=10
+            )
+            _jwks_cache["keys"] = r.json().get("keys", [])
+        except Exception:
+            _jwks_cache["keys"] = []
+    return _jwks_cache["keys"]
+
 def verify_jwt(token: str) -> Dict[str, Any]:
-    """Verify JWT token and return payload"""
+    """Verify JWT token using Supabase JWKS (ES256) or fallback to HS256"""
+    # Try ES256 with JWKS first
     try:
-        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"])
+        import json, base64
+        header = json.loads(base64.urlsafe_b64decode(token.split(".")[0] + "=="))
+        
+        if header.get("alg") == "ES256":
+            keys = _get_jwks()
+            kid = header.get("kid")
+            key_data = next((k for k in keys if k.get("kid") == kid), None)
+            if key_data:
+                public_key = jwk.construct(key_data, algorithm="ES256")
+                payload = jwt.decode(token, public_key, algorithms=["ES256"], audience="authenticated", options={"verify_aud": False})
+                return payload
+    except JWTError:
+        raise HTTPException(401, "Invalid or expired token")
+    except Exception:
+        pass
+    
+    # Fallback to HS256 with JWT secret
+    try:
+        payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], options={"verify_aud": False})
         return payload
     except JWTError:
         raise HTTPException(401, "Invalid or expired token")
