@@ -873,20 +873,30 @@
 
         /* === RESPONSIVE === */
         @media (max-width: 768px) {
-            .sidebar {
-                position: fixed; left: -280px; z-index: 150;
+            .sidebar, .sidebar.collapsed {
+                position: fixed; left: -300px; z-index: 150;
+                width: 280px; min-width: 280px;
                 transition: left .3s;
             }
-            .sidebar.open { left: 0; }
+            .sidebar.open { left: 0; width: 280px; min-width: 280px; }
+            .main { margin-left: 0 !important; width: 100% !important; }
             .topbar { padding: 0 16px; }
+            .topbar-left { gap: 8px; }
+            #menuBtn { display: inline-flex !important; }
             .breadcrumbs { display: none; }
-            .cmd-btn, .theme-toggle, .plan-badge { display: none; }
+            .cmd-btn, .theme-toggle, .plan-badge, .user-name { display: none; }
             .content { padding: 20px 16px 80px; }
-            .stats-row { grid-template-columns: 1fr; }
+            .stats-row { grid-template-columns: 1fr 1fr; gap: 10px; }
+            .stat-card { padding: 14px; }
+            .stat-value { font-size: 22px; }
             .form-grid { grid-template-columns: 1fr; }
             .channel-grid { grid-template-columns: 1fr; }
+            .tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+            .tab { white-space: nowrap; padding: 10px 14px; font-size: 13px; }
             .mobile-tabs { display: block; }
             .toast { bottom: 100px; right: 16px; left: 16px; }
+            .modal { max-width: calc(100vw - 32px); margin: 16px; max-height: 90vh; overflow-y: auto; }
+            .user-dropdown { right: 0; }
         }
     </style>
 </head>
@@ -932,7 +942,7 @@
     <!-- TOPBAR -->
     <div class="topbar">
         <div class="topbar-left">
-            <button class="btn-ghost btn-sm" id="menuBtn" style="display:none" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+            <button class="btn-ghost btn-sm" id="menuBtn" onclick="toggleSidebar()">☰</button>
             <div class="breadcrumbs">
                 <span>Dashboard</span>
                 <span class="sep">/</span>
@@ -1186,7 +1196,23 @@ document.addEventListener('click', e => {
 
 // Sidebar
 function toggleSidebar() {
-    document.getElementById('sidebar').classList.toggle('collapsed');
+    const sb = document.getElementById('sidebar');
+    if (window.innerWidth <= 768) {
+        sb.classList.toggle('open');
+        // Toggle overlay
+        let overlay = document.getElementById('sidebarOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'sidebarOverlay';
+            overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:149;transition:opacity .3s';
+            overlay.onclick = () => { sb.classList.remove('open'); overlay.remove(); };
+            document.body.appendChild(overlay);
+        } else {
+            overlay.remove();
+        }
+    } else {
+        sb.classList.toggle('collapsed');
+    }
 }
 
 // Command Palette
