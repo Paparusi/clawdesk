@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Agent Platform — Nền tảng CSKH đa kênh</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --zinc-50: #fafafa; --zinc-100: #f4f4f5; --zinc-200: #e4e4e7;
+            --zinc-300: #d4d4d8; --zinc-400: #a1a1aa; --zinc-500: #71717a;
+            --zinc-600: #52525b; --zinc-700: #3f3f46; --zinc-800: #27272a;
+            --zinc-900: #18181b; --zinc-950: #09090b;
+            --slate-800: #1e293b; --slate-900: #0f172a;
+            --accent: #818cf8; --accent-hover: #6366f1;
+            --green: #34d399; --orange: #fb923c; --red: #f87171;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--zinc-950);
+            color: var(--zinc-200);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        /* NAV */
+        nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+            background: rgba(9,9,11,.8); backdrop-filter: blur(16px);
+            border-bottom: 1px solid var(--zinc-800);
+        }
+        .nav-inner {
+            max-width: 1200px; margin: 0 auto; padding: 0 24px;
+            display: flex; align-items: center; justify-content: space-between; height: 64px;
+        }
+        .logo { font-size: 20px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
+        .logo span { background: linear-gradient(135deg, var(--accent), #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .nav-links { display: flex; gap: 32px; }
+        .nav-links a { color: var(--zinc-400); text-decoration: none; font-size: 14px; font-weight: 500; transition: color .2s; }
+        .nav-links a:hover { color: #fff; }
+        .nav-btns { display: flex; gap: 12px; }
+
+        /* BUTTONS */
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 10px 20px; border-radius: 10px; font-size: 14px; font-weight: 600;
+            cursor: pointer; border: none; transition: all .2s; font-family: inherit;
+        }
+        .btn-ghost { background: transparent; color: var(--zinc-300); border: 1px solid var(--zinc-700); }
+        .btn-ghost:hover { background: var(--zinc-800); color: #fff; }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 8px 24px rgba(99,102,241,.3); }
+        .btn-sm { padding: 8px 16px; font-size: 13px; }
+
+        /* HERO */
+        .hero {
+            min-height: 100vh; display: flex; align-items: center; justify-content: center;
+            text-align: center; padding: 100px 24px 60px;
+            background: radial-gradient(ellipse at top, rgba(99,102,241,.08) 0%, transparent 60%);
+        }
+        .hero-content { max-width: 800px; }
+        .badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: rgba(99,102,241,.12); border: 1px solid rgba(99,102,241,.2);
+            padding: 6px 14px; border-radius: 100px; font-size: 13px; color: var(--accent);
+            margin-bottom: 24px;
+        }
+        .hero h1 { font-size: clamp(36px, 6vw, 64px); font-weight: 800; color: #fff; line-height: 1.1; margin-bottom: 16px; }
+        .hero h1 .gradient { background: linear-gradient(135deg, var(--accent), #c084fc, var(--green)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .hero p { font-size: 18px; color: var(--zinc-400); max-width: 600px; margin: 0 auto 32px; }
+        .hero-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+
+        /* FEATURES */
+        .section { padding: 100px 24px; max-width: 1200px; margin: 0 auto; }
+        .section-title { text-align: center; margin-bottom: 60px; }
+        .section-title h2 { font-size: 36px; font-weight: 700; color: #fff; margin-bottom: 12px; }
+        .section-title p { color: var(--zinc-400); font-size: 16px; }
+
+        .features-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 24px;
+        }
+        .feature-card {
+            background: var(--zinc-900); border: 1px solid var(--zinc-800); border-radius: 16px;
+            padding: 32px; transition: all .3s;
+        }
+        .feature-card:hover { border-color: var(--zinc-700); transform: translateY(-4px); }
+        .feature-icon {
+            width: 48px; height: 48px; border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; margin-bottom: 16px;
+        }
+        .fi-blue { background: rgba(99,102,241,.15); }
+        .fi-green { background: rgba(52,211,153,.15); }
+        .fi-orange { background: rgba(251,146,60,.15); }
+        .fi-purple { background: rgba(192,132,252,.15); }
+        .feature-card h3 { font-size: 18px; font-weight: 600; color: #fff; margin-bottom: 8px; }
+        .feature-card p { font-size: 14px; color: var(--zinc-400); }
+
+        /* PRICING */
+        .pricing-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px; max-width: 1000px; margin: 0 auto;
+        }
+        .price-card {
+            background: var(--zinc-900); border: 1px solid var(--zinc-800); border-radius: 20px;
+            padding: 36px; position: relative; transition: all .3s;
+        }
+        .price-card.popular {
+            border-color: var(--accent);
+            background: linear-gradient(180deg, rgba(99,102,241,.06) 0%, var(--zinc-900) 100%);
+        }
+        .popular-badge {
+            position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+            background: var(--accent); color: #fff; padding: 4px 16px; border-radius: 100px;
+            font-size: 12px; font-weight: 600;
+        }
+        .price-card h3 { font-size: 20px; font-weight: 600; color: #fff; margin-bottom: 8px; }
+        .price { font-size: 40px; font-weight: 800; color: #fff; margin: 16px 0; }
+        .price small { font-size: 16px; font-weight: 400; color: var(--zinc-400); }
+        .price-features { list-style: none; margin: 24px 0; }
+        .price-features li {
+            padding: 8px 0; font-size: 14px; color: var(--zinc-300);
+            display: flex; align-items: center; gap: 10px;
+        }
+        .price-features li::before { content: "✓"; color: var(--green); font-weight: 700; }
+
+        /* MODAL */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7);
+            backdrop-filter: blur(4px); z-index: 200; align-items: center; justify-content: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--zinc-900); border: 1px solid var(--zinc-700); border-radius: 20px;
+            padding: 40px; width: 100%; max-width: 420px; position: relative;
+        }
+        .modal h2 { font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+        .modal p { color: var(--zinc-400); font-size: 14px; margin-bottom: 24px; }
+        .modal-close {
+            position: absolute; top: 16px; right: 16px; background: none; border: none;
+            color: var(--zinc-400); font-size: 24px; cursor: pointer;
+        }
+        .form-group { margin-bottom: 16px; }
+        .form-group label { display: block; font-size: 13px; font-weight: 500; color: var(--zinc-300); margin-bottom: 6px; }
+        .form-group input {
+            width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--zinc-700);
+            background: var(--zinc-800); color: #fff; font-size: 14px; font-family: inherit;
+            outline: none; transition: border-color .2s;
+        }
+        .form-group input:focus { border-color: var(--accent); }
+        .form-error { color: var(--red); font-size: 13px; margin-top: 6px; display: none; }
+        .form-tabs { display: flex; gap: 0; margin-bottom: 24px; background: var(--zinc-800); border-radius: 10px; padding: 4px; }
+        .form-tab {
+            flex: 1; padding: 8px; text-align: center; border-radius: 8px; cursor: pointer;
+            font-size: 14px; font-weight: 500; color: var(--zinc-400); transition: all .2s;
+        }
+        .form-tab.active { background: var(--zinc-700); color: #fff; }
+
+        /* FOOTER */
+        footer {
+            border-top: 1px solid var(--zinc-800); padding: 40px 24px; text-align: center;
+            color: var(--zinc-500); font-size: 14px;
+        }
+
+        @media (max-width: 768px) {
+            .nav-links { display: none; }
+            .hero h1 { font-size: 32px; }
+        }
+    </style>
+</head>
+<body>
+
+<nav>
+    <div class="nav-inner">
+        <div class="logo">🤖 <span>AI Agent</span></div>
+        <div class="nav-links">
+            <a href="#features">Tính năng</a>
+            <a href="#pricing">Bảng giá</a>
+        </div>
+        <div class="nav-btns">
+            <button class="btn btn-ghost btn-sm" onclick="openModal('login')">Đăng nhập</button>
+            <button class="btn btn-primary btn-sm" onclick="openModal('register')">Dùng thử miễn phí</button>
+        </div>
+    </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+    <div class="hero-content">
+        <div class="badge">🚀 Nền tảng AI Agent thế hệ mới</div>
+        <h1>Tự động hoá <span class="gradient">Chăm Sóc Khách Hàng</span> với AI</h1>
+        <p>Nền tảng AI Agent CSKH đa kênh — Telegram, Facebook, Zalo, Webchat. Dùng API key của bạn, kiến thức của bạn, thương hiệu của bạn.</p>
+        <div class="hero-btns">
+            <button class="btn btn-primary" onclick="openModal('register')">Bắt đầu miễn phí →</button>
+            <button class="btn btn-ghost" onclick="document.getElementById('features').scrollIntoView({behavior:'smooth'})">Xem tính năng</button>
+        </div>
+    </div>
+</section>
+
+<!-- FEATURES -->
+<section class="section" id="features">
+    <div class="section-title">
+        <h2>Tính năng nổi bật</h2>
+        <p>Mọi thứ bạn cần để xây dựng hệ thống CSKH AI chuyên nghiệp</p>
+    </div>
+    <div class="features-grid">
+        <div class="feature-card">
+            <div class="feature-icon fi-blue">💬</div>
+            <h3>Đa kênh</h3>
+            <p>Kết nối Telegram, Facebook Messenger, Zalo OA và Webchat chỉ trong vài phút. Quản lý tất cả tại một nơi.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon fi-green">🔑</div>
+            <h3>BYO API Key</h3>
+            <p>Dùng API key của bạn từ OpenAI, Anthropic hoặc Google. Không phụ thuộc, không markup phí.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon fi-orange">📚</div>
+            <h3>Knowledge Base</h3>
+            <p>Thêm FAQ, thông tin sản phẩm, chính sách — AI sẽ trả lời chính xác dựa trên kiến thức của bạn.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon fi-purple">📊</div>
+            <h3>Phân tích & Giám sát</h3>
+            <p>Theo dõi số tin nhắn, hội thoại, hiệu suất AI. Xem toàn bộ cuộc trò chuyện real-time.</p>
+        </div>
+    </div>
+</section>
+
+<!-- PRICING -->
+<section class="section" id="pricing">
+    <div class="section-title">
+        <h2>Bảng giá</h2>
+        <p>Bắt đầu miễn phí, nâng cấp khi cần</p>
+    </div>
+    <div class="pricing-grid">
+        <div class="price-card">
+            <h3>Free</h3>
+            <p style="color:var(--zinc-400);font-size:14px">Dùng thử không giới hạn thời gian</p>
+            <div class="price">0đ <small>/tháng</small></div>
+            <ul class="price-features">
+                <li>1 AI Agent</li>
+                <li>100 tin nhắn/ngày</li>
+                <li>Tất cả kênh chat</li>
+                <li>Knowledge base cơ bản</li>
+            </ul>
+            <button class="btn btn-ghost" style="width:100%" onclick="openModal('register')">Bắt đầu miễn phí</button>
+        </div>
+        <div class="price-card popular">
+            <div class="popular-badge">Phổ biến</div>
+            <h3>Pro</h3>
+            <p style="color:var(--zinc-400);font-size:14px">Cho cá nhân & startup</p>
+            <div class="price">200K <small>/tháng</small></div>
+            <ul class="price-features">
+                <li>5 AI Agents</li>
+                <li>Không giới hạn tin nhắn</li>
+                <li>Tất cả kênh chat</li>
+                <li>Knowledge base nâng cao</li>
+                <li>Hỗ trợ ưu tiên</li>
+            </ul>
+            <button class="btn btn-primary" style="width:100%" onclick="openModal('register')">Nâng cấp Pro</button>
+        </div>
+        <div class="price-card">
+            <h3>Business</h3>
+            <p style="color:var(--zinc-400);font-size:14px">Cho doanh nghiệp</p>
+            <div class="price">500K <small>/tháng</small></div>
+            <ul class="price-features">
+                <li>20 AI Agents</li>
+                <li>Không giới hạn tin nhắn</li>
+                <li>Tất cả kênh chat</li>
+                <li>Knowledge base không giới hạn</li>
+                <li>Hỗ trợ ưu tiên 24/7</li>
+                <li>API access đầy đủ</li>
+            </ul>
+            <button class="btn btn-ghost" style="width:100%" onclick="openModal('register')">Liên hệ</button>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <p>© 2026 AI Agent Platform. Được xây dựng bởi Tôm 🦐</p>
+</footer>
+
+<!-- AUTH MODAL -->
+<div class="modal-overlay" id="authModal">
+    <div class="modal">
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <h2 id="modalTitle">Đăng nhập</h2>
+        <p id="modalDesc">Chào mừng trở lại! Đăng nhập để tiếp tục.</p>
+
+        <div class="form-tabs">
+            <div class="form-tab active" id="tabLogin" onclick="switchTab('login')">Đăng nhập</div>
+            <div class="form-tab" id="tabRegister" onclick="switchTab('register')">Đăng ký</div>
+        </div>
+
+        <form id="authForm" onsubmit="handleAuth(event)">
+            <div class="form-group" id="nameGroup" style="display:none">
+                <label>Tên hiển thị</label>
+                <input type="text" id="nameInput" placeholder="Tên của bạn">
+            </div>
+            <div class="form-group">
+                <label>Email</label>
+                <input type="email" id="emailInput" placeholder="email@example.com" required>
+            </div>
+            <div class="form-group">
+                <label>Mật khẩu</label>
+                <input type="password" id="passwordInput" placeholder="Tối thiểu 6 ký tự" required minlength="6">
+            </div>
+            <div class="form-error" id="formError"></div>
+            <button type="submit" class="btn btn-primary" style="width:100%;margin-top:8px" id="submitBtn">Đăng nhập</button>
+        </form>
+    </div>
+</div>
+
+<script>
+const API = '';
+let authMode = 'login';
+
+function openModal(mode) {
+    authMode = mode;
+    switchTab(mode);
+    document.getElementById('authModal').classList.add('active');
+}
+function closeModal() {
+    document.getElementById('authModal').classList.remove('active');
+    document.getElementById('formError').style.display = 'none';
+}
+function switchTab(mode) {
+    authMode = mode;
+    document.getElementById('tabLogin').classList.toggle('active', mode === 'login');
+    document.getElementById('tabRegister').classList.toggle('active', mode === 'register');
+    document.getElementById('nameGroup').style.display = mode === 'register' ? 'block' : 'none';
+    document.getElementById('modalTitle').textContent = mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản';
+    document.getElementById('modalDesc').textContent = mode === 'login' ? 'Chào mừng trở lại! Đăng nhập để tiếp tục.' : 'Tạo tài khoản miễn phí để bắt đầu.';
+    document.getElementById('submitBtn').textContent = mode === 'login' ? 'Đăng nhập' : 'Đăng ký';
+    document.getElementById('formError').style.display = 'none';
+}
+
+async function handleAuth(e) {
+    e.preventDefault();
+    const errEl = document.getElementById('formError');
+    errEl.style.display = 'none';
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true; btn.textContent = 'Đang xử lý...';
+
+    const body = {
+        email: document.getElementById('emailInput').value,
+        password: document.getElementById('passwordInput').value,
+    };
+    if (authMode === 'register') body.name = document.getElementById('nameInput').value;
+
+    try {
+        const res = await fetch(`${API}/api/auth/${authMode}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Có lỗi xảy ra');
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        window.location.href = '/dashboard';
+    } catch (err) {
+        errEl.textContent = err.message;
+        errEl.style.display = 'block';
+    } finally {
+        btn.disabled = false;
+        btn.textContent = authMode === 'login' ? 'Đăng nhập' : 'Đăng ký';
+    }
+}
+
+// If already logged in, redirect
+if (localStorage.getItem('token')) {
+    // verify token
+    fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
+        .then(r => { if (r.ok) window.location.href = '/dashboard'; });
+}
+
+// Close modal on overlay click
+document.getElementById('authModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+</script>
+</body>
+</html>

@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard — AI Agent Platform</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --zinc-50: #fafafa; --zinc-100: #f4f4f5; --zinc-200: #e4e4e7;
+            --zinc-300: #d4d4d8; --zinc-400: #a1a1aa; --zinc-500: #71717a;
+            --zinc-600: #52525b; --zinc-700: #3f3f46; --zinc-800: #27272a;
+            --zinc-900: #18181b; --zinc-950: #09090b;
+            --accent: #818cf8; --accent-hover: #6366f1;
+            --green: #34d399; --orange: #fb923c; --red: #f87171;
+        }
+        body { font-family: 'Inter', sans-serif; background: var(--zinc-950); color: var(--zinc-200); display: flex; height: 100vh; overflow: hidden; }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 280px; min-width: 280px; background: var(--zinc-900); border-right: 1px solid var(--zinc-800);
+            display: flex; flex-direction: column; height: 100vh;
+        }
+        .sidebar-header {
+            padding: 20px; border-bottom: 1px solid var(--zinc-800);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .sidebar-logo { font-size: 18px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
+        .sidebar-logo span { background: linear-gradient(135deg, var(--accent), #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+
+        .sidebar-nav { flex: 1; overflow-y: auto; padding: 12px; }
+        .nav-section { margin-bottom: 8px; }
+        .nav-section-title { font-size: 11px; font-weight: 600; color: var(--zinc-500); text-transform: uppercase; padding: 8px 12px; letter-spacing: .5px; }
+        .nav-item {
+            display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px;
+            color: var(--zinc-400); cursor: pointer; font-size: 14px; transition: all .15s;
+            margin-bottom: 2px;
+        }
+        .nav-item:hover { background: var(--zinc-800); color: var(--zinc-200); }
+        .nav-item.active { background: rgba(99,102,241,.12); color: var(--accent); }
+        .nav-item .icon { font-size: 18px; width: 24px; text-align: center; }
+        .nav-item .badge-count {
+            margin-left: auto; background: var(--zinc-700); color: var(--zinc-300);
+            font-size: 11px; padding: 2px 8px; border-radius: 100px;
+        }
+
+        .agent-list { padding: 0 12px 12px; }
+        .agent-item {
+            display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px;
+            cursor: pointer; transition: all .15s; margin-bottom: 2px;
+        }
+        .agent-item:hover { background: var(--zinc-800); }
+        .agent-item.active { background: rgba(99,102,241,.12); }
+        .agent-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+        .agent-dot.inactive { background: var(--zinc-600); }
+        .agent-name { font-size: 14px; color: var(--zinc-200); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .sidebar-footer { padding: 16px; border-top: 1px solid var(--zinc-800); }
+        .btn-new-agent {
+            width: 100%; padding: 10px; border-radius: 10px; background: var(--accent); color: #fff;
+            border: none; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
+            transition: all .2s; display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .btn-new-agent:hover { background: var(--accent-hover); }
+
+        /* MAIN */
+        .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+        /* TOP BAR */
+        .topbar {
+            height: 64px; border-bottom: 1px solid var(--zinc-800); padding: 0 24px;
+            display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+        }
+        .topbar-left { display: flex; align-items: center; gap: 12px; }
+        .topbar-title { font-size: 18px; font-weight: 600; color: #fff; }
+        .topbar-right { display: flex; align-items: center; gap: 16px; }
+        .plan-badge {
+            padding: 4px 12px; border-radius: 100px; font-size: 12px; font-weight: 600; text-transform: uppercase;
+        }
+        .plan-free { background: rgba(113,113,122,.2); color: var(--zinc-400); }
+        .plan-pro { background: rgba(99,102,241,.15); color: var(--accent); }
+        .plan-business { background: rgba(251,146,60,.15); color: var(--orange); }
+        .user-info { display: flex; align-items: center; gap: 8px; color: var(--zinc-300); font-size: 14px; }
+        .user-avatar {
+            width: 32px; height: 32px; border-radius: 50%; background: var(--zinc-700);
+            display: flex; align-items: center; justify-content: center; font-size: 14px;
+        }
+        .btn-logout {
+            background: none; border: 1px solid var(--zinc-700); color: var(--zinc-400); padding: 6px 14px;
+            border-radius: 8px; cursor: pointer; font-size: 13px; font-family: inherit; transition: all .2s;
+        }
+        .btn-logout:hover { border-color: var(--red); color: var(--red); }
+
+        /* CONTENT */
+        .content { flex: 1; overflow-y: auto; padding: 24px; }
+
+        /* STATS CARDS */
+        .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px,1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card {
+            background: var(--zinc-900); border: 1px solid var(--zinc-800); border-radius: 14px; padding: 20px;
+        }
+        .stat-label { font-size: 13px; color: var(--zinc-500); margin-bottom: 4px; }
+        .stat-value { font-size: 28px; font-weight: 700; color: #fff; }
+
+        /* TABS */
+        .tabs { display: flex; gap: 0; border-bottom: 1px solid var(--zinc-800); margin-bottom: 24px; }
+        .tab {
+            padding: 12px 20px; font-size: 14px; font-weight: 500; color: var(--zinc-400);
+            cursor: pointer; border-bottom: 2px solid transparent; transition: all .2s;
+        }
+        .tab:hover { color: var(--zinc-200); }
+        .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+        /* FORMS */
+        .form-row { margin-bottom: 20px; }
+        .form-row label { display: block; font-size: 13px; font-weight: 500; color: var(--zinc-300); margin-bottom: 6px; }
+        .form-row input, .form-row select, .form-row textarea {
+            width: 100%; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--zinc-700);
+            background: var(--zinc-800); color: #fff; font-size: 14px; font-family: inherit;
+            outline: none; transition: border-color .2s;
+        }
+        .form-row input:focus, .form-row select:focus, .form-row textarea:focus { border-color: var(--accent); }
+        .form-row textarea { resize: vertical; min-height: 100px; }
+        .form-row select { appearance: none; cursor: pointer; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+        .btn {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            padding: 10px 20px; border-radius: 10px; font-size: 14px; font-weight: 600;
+            cursor: pointer; border: none; transition: all .2s; font-family: inherit;
+        }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-danger { background: rgba(248,113,113,.12); color: var(--red); border: 1px solid rgba(248,113,113,.2); }
+        .btn-danger:hover { background: rgba(248,113,113,.2); }
+        .btn-ghost { background: transparent; color: var(--zinc-300); border: 1px solid var(--zinc-700); }
+        .btn-ghost:hover { background: var(--zinc-800); }
+        .btn-sm { padding: 8px 14px; font-size: 13px; }
+        .btn-group { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+
+        /* KB LIST */
+        .kb-list { margin-top: 16px; }
+        .kb-item {
+            background: var(--zinc-800); border: 1px solid var(--zinc-700); border-radius: 12px;
+            padding: 16px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: flex-start;
+        }
+        .kb-item h4 { font-size: 14px; color: #fff; margin-bottom: 4px; }
+        .kb-item p { font-size: 13px; color: var(--zinc-400); }
+        .kb-delete { background: none; border: none; color: var(--zinc-500); cursor: pointer; font-size: 18px; padding: 4px; }
+        .kb-delete:hover { color: var(--red); }
+
+        /* CHANNEL CARDS */
+        .channel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 16px; }
+        .channel-card {
+            background: var(--zinc-900); border: 1px solid var(--zinc-800); border-radius: 14px; padding: 24px;
+        }
+        .channel-card h4 { font-size: 16px; color: #fff; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+        .channel-card p { font-size: 13px; color: var(--zinc-400); margin-bottom: 16px; }
+        .channel-status { display: flex; align-items: center; gap: 6px; font-size: 13px; margin-bottom: 12px; }
+        .channel-status.connected { color: var(--green); }
+        .channel-status.disconnected { color: var(--zinc-500); }
+
+        /* CONV LIST */
+        .conv-list { margin-top: 12px; }
+        .conv-item {
+            display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 10px;
+            cursor: pointer; transition: all .15s; border: 1px solid transparent;
+        }
+        .conv-item:hover { background: var(--zinc-800); }
+        .conv-item.active { background: var(--zinc-800); border-color: var(--zinc-700); }
+        .conv-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--zinc-700); display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+        .conv-info { flex: 1; min-width: 0; }
+        .conv-name { font-size: 14px; font-weight: 500; color: #fff; }
+        .conv-preview { font-size: 13px; color: var(--zinc-400); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .conv-meta { text-align: right; flex-shrink: 0; }
+        .conv-time { font-size: 12px; color: var(--zinc-500); }
+        .conv-badge-ch { font-size: 11px; padding: 2px 8px; border-radius: 100px; background: var(--zinc-800); color: var(--zinc-400); }
+
+        /* MESSAGES */
+        .messages-panel { display: flex; flex-direction: column; height: 100%; }
+        .messages-header { padding: 16px; border-bottom: 1px solid var(--zinc-800); }
+        .messages-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+        .msg {
+            max-width: 70%; padding: 12px 16px; border-radius: 14px; font-size: 14px; line-height: 1.5;
+        }
+        .msg.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+        .msg.assistant { align-self: flex-start; background: var(--zinc-800); color: var(--zinc-200); border-bottom-left-radius: 4px; }
+        .msg-time { font-size: 11px; opacity: .6; margin-top: 4px; }
+
+        /* EMPTY STATE */
+        .empty-state { text-align: center; padding: 80px 24px; color: var(--zinc-500); }
+        .empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+        .empty-state h3 { font-size: 18px; color: var(--zinc-300); margin-bottom: 8px; }
+
+        /* EMBED CODE BOX */
+        .code-box {
+            background: var(--zinc-800); border: 1px solid var(--zinc-700); border-radius: 10px;
+            padding: 14px; font-family: monospace; font-size: 13px; color: var(--green);
+            word-break: break-all; position: relative;
+        }
+        .code-copy {
+            position: absolute; top: 8px; right: 8px; background: var(--zinc-700); border: none;
+            color: var(--zinc-300); padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px;
+        }
+
+        /* MODAL */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7);
+            backdrop-filter: blur(4px); z-index: 200; align-items: center; justify-content: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal {
+            background: var(--zinc-900); border: 1px solid var(--zinc-700); border-radius: 20px;
+            padding: 32px; width: 100%; max-width: 480px; position: relative;
+        }
+        .modal h3 { font-size: 20px; font-weight: 700; color: #fff; margin-bottom: 20px; }
+        .modal-close {
+            position: absolute; top: 16px; right: 16px; background: none; border: none;
+            color: var(--zinc-400); font-size: 24px; cursor: pointer;
+        }
+
+        .toast {
+            position: fixed; bottom: 24px; right: 24px; background: var(--zinc-800);
+            border: 1px solid var(--zinc-700); padding: 12px 20px; border-radius: 12px;
+            color: #fff; font-size: 14px; z-index: 300; transform: translateY(100px); opacity: 0;
+            transition: all .3s;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+
+        @media (max-width: 768px) {
+            .sidebar { position: fixed; left: -280px; z-index: 150; transition: left .3s; }
+            .sidebar.open { left: 0; }
+            .form-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+        <div class="sidebar-logo">🤖 <span>AI Agent</span></div>
+    </div>
+    <nav class="sidebar-nav">
+        <div class="nav-section">
+            <div class="nav-section-title">Menu</div>
+            <div class="nav-item active" data-view="overview" onclick="showView('overview')">
+                <span class="icon">📊</span> Tổng quan
+            </div>
+            <div class="nav-item" data-view="conversations" onclick="showView('conversations')">
+                <span class="icon">💬</span> Hội thoại <span class="badge-count" id="convCount">0</span>
+            </div>
+        </div>
+        <div class="nav-section">
+            <div class="nav-section-title">Agents</div>
+            <div id="agentList"></div>
+        </div>
+    </nav>
+    <div class="sidebar-footer">
+        <button class="btn-new-agent" onclick="openCreateAgent()">+ Tạo Agent mới</button>
+    </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+    <div class="topbar">
+        <div class="topbar-left">
+            <button class="btn-ghost btn-sm" style="display:none" id="menuBtn" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+            <span class="topbar-title" id="topbarTitle">Tổng quan</span>
+        </div>
+        <div class="topbar-right">
+            <span class="plan-badge plan-free" id="planBadge">FREE</span>
+            <div class="user-info">
+                <div class="user-avatar" id="userAvatar">U</div>
+                <span id="userName">User</span>
+            </div>
+            <button class="btn-logout" onclick="logout()">Đăng xuất</button>
+        </div>
+    </div>
+
+    <div class="content" id="content">
+        <!-- Dynamic content rendered here -->
+    </div>
+</div>
+
+<!-- CREATE AGENT MODAL -->
+<div class="modal-overlay" id="createModal">
+    <div class="modal">
+        <button class="modal-close" onclick="closeCreateAgent()">&times;</button>
+        <h3>Tạo Agent mới</h3>
+        <div class="form-row">
+            <label>Tên Agent</label>
+            <input type="text" id="newAgentName" placeholder="VD: CSKH Shop ABC">
+        </div>
+        <div class="form-row">
+            <label>Mô tả</label>
+            <input type="text" id="newAgentDesc" placeholder="Mô tả ngắn (tuỳ chọn)">
+        </div>
+        <div class="form-row">
+            <label>System Prompt</label>
+            <textarea id="newAgentPrompt" placeholder="Hướng dẫn cho AI...">Bạn là trợ lý AI chăm sóc khách hàng. Trả lời thân thiện, chính xác, ngắn gọn.</textarea>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-primary" onclick="createAgent()">Tạo Agent</button>
+            <button class="btn btn-ghost" onclick="closeCreateAgent()">Huỷ</button>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+const token = localStorage.getItem('token');
+const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+if (!token) { window.location.href = '/'; }
+
+let agents = [];
+let currentAgent = null;
+let currentTab = 'settings';
+let currentView = 'overview';
+let stats = {};
+
+// Init
+document.getElementById('userName').textContent = user.name || user.email || 'User';
+document.getElementById('userAvatar').textContent = (user.name || user.email || 'U')[0].toUpperCase();
+const planBadge = document.getElementById('planBadge');
+planBadge.textContent = (user.plan || 'free').toUpperCase();
+planBadge.className = 'plan-badge plan-' + (user.plan || 'free');
+
+// API Helper
+async function api(path, opts = {}) {
+    const res = await fetch(`${API}${path}`, {
+        ...opts,
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, ...(opts.headers || {}) },
+    });
+    if (res.status === 401) { logout(); return null; }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    return data;
+}
+
+function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function logout() {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    window.location.href = '/';
+}
+
+// VIEWS
+function showView(view) {
+    currentView = view;
+    currentAgent = null;
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === view));
+    document.querySelectorAll('.agent-item').forEach(n => n.classList.remove('active'));
+    if (view === 'overview') renderOverview();
+    else if (view === 'conversations') renderAllConversations();
+}
+
+function selectAgent(agentId) {
+    currentAgent = agents.find(a => a.id === agentId);
+    currentTab = 'settings';
+    currentView = 'agent';
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.querySelectorAll('.agent-item').forEach(a => a.classList.toggle('active', a.dataset.id === agentId));
+    document.getElementById('topbarTitle').textContent = currentAgent?.name || 'Agent';
+    renderAgent();
+}
+
+// OVERVIEW
+async function renderOverview() {
+    document.getElementById('topbarTitle').textContent = 'Tổng quan';
+    try { stats = await api('/api/stats'); } catch(e) { stats = {}; }
+    document.getElementById('content').innerHTML = `
+        <div class="stats-row">
+            <div class="stat-card"><div class="stat-label">Agents</div><div class="stat-value">${stats.agents || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">Hội thoại</div><div class="stat-value">${stats.conversations || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">Tin nhắn</div><div class="stat-value">${stats.messages || 0}</div></div>
+            <div class="stat-card"><div class="stat-label">Gói dịch vụ</div><div class="stat-value" style="font-size:20px;text-transform:uppercase">${stats.plan || 'free'}</div></div>
+        </div>
+        <div class="empty-state" style="padding:40px">
+            <div class="icon">🚀</div>
+            <h3>Chào mừng đến AI Agent Platform!</h3>
+            <p>Tạo agent đầu tiên để bắt đầu tự động hoá CSKH.</p>
+            <button class="btn btn-primary" style="margin-top:16px" onclick="openCreateAgent()">+ Tạo Agent mới</button>
+        </div>
+    `;
+}
+
+// AGENT DETAIL
+async function renderAgent() {
+    if (!currentAgent) return;
+    // Fetch fresh data
+    try { currentAgent = await api(`/api/agents/${currentAgent.id}`); } catch(e) { return; }
+    const c = document.getElementById('content');
+    c.innerHTML = `
+        <div class="tabs">
+            <div class="tab ${currentTab==='settings'?'active':''}" onclick="switchAgentTab('settings')">⚙️ Cài đặt</div>
+            <div class="tab ${currentTab==='knowledge'?'active':''}" onclick="switchAgentTab('knowledge')">📚 Kiến thức</div>
+            <div class="tab ${currentTab==='channels'?'active':''}" onclick="switchAgentTab('channels')">🔗 Kênh chat</div>
+            <div class="tab ${currentTab==='convos'?'active':''}" onclick="switchAgentTab('convos')">💬 Hội thoại</div>
+        </div>
+        <div id="agentTabContent"></div>
+    `;
+    renderAgentTab();
+}
+
+function switchAgentTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab').forEach((t,i) => {
+        t.classList.toggle('active', t.textContent.includes(
+            tab === 'settings' ? 'Cài đặt' : tab === 'knowledge' ? 'Kiến thức' : tab === 'channels' ? 'Kênh' : 'Hội thoại'
+        ));
+    });
+    renderAgentTab();
+}
+
+function renderAgentTab() {
+    const el = document.getElementById('agentTabContent');
+    if (!el) return;
+    if (currentTab === 'settings') renderSettingsTab(el);
+    else if (currentTab === 'knowledge') renderKnowledgeTab(el);
+    else if (currentTab === 'channels') renderChannelsTab(el);
+    else if (currentTab === 'convos') renderConvosTab(el);
+}
+
+// SETTINGS TAB
+function renderSettingsTab(el) {
+    const a = currentAgent;
+    const models = {
+        openai: ['gpt-4o-mini','gpt-4o','gpt-4-turbo','gpt-3.5-turbo'],
+        anthropic: ['claude-sonnet-4-20250514','claude-3-5-haiku-20241022','claude-3-opus-20240229'],
+        google: ['gemini-1.5-flash','gemini-1.5-pro','gemini-pro'],
+    };
+    const providerModels = models[a.llm_provider] || models.openai;
+
+    el.innerHTML = `
+        <div class="form-row">
+            <label>Tên Agent</label>
+            <input type="text" id="agentName" value="${esc(a.name)}">
+        </div>
+        <div class="form-row">
+            <label>Mô tả</label>
+            <input type="text" id="agentDesc" value="${esc(a.description || '')}">
+        </div>
+        <div class="form-row">
+            <label>System Prompt</label>
+            <textarea id="agentPrompt" rows="5">${esc(a.system_prompt)}</textarea>
+        </div>
+        <div class="form-grid">
+            <div class="form-row">
+                <label>LLM Provider</label>
+                <select id="agentProvider" onchange="updateModels()">
+                    <option value="openai" ${a.llm_provider==='openai'?'selected':''}>OpenAI</option>
+                    <option value="anthropic" ${a.llm_provider==='anthropic'?'selected':''}>Anthropic</option>
+                    <option value="google" ${a.llm_provider==='google'?'selected':''}>Google</option>
+                </select>
+            </div>
+            <div class="form-row">
+                <label>Model</label>
+                <select id="agentModel">
+                    ${providerModels.map(m => `<option value="${m}" ${a.llm_model===m?'selected':''}>${m}</option>`).join('')}
+                </select>
+            </div>
+        </div>
+        <div class="form-row">
+            <label>API Key ${a.llm_api_key_preview ? `<span style="color:var(--zinc-500);font-weight:400">(hiện tại: ${esc(a.llm_api_key_preview)})</span>` : ''}</label>
+            <input type="password" id="agentApiKey" placeholder="Nhập API key mới (để trống nếu không đổi)">
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-primary" onclick="saveAgent()">💾 Lưu thay đổi</button>
+            <button class="btn btn-danger" onclick="deleteAgent()">🗑️ Xoá Agent</button>
+        </div>
+    `;
+}
+
+window.updateModels = function() {
+    const models = {
+        openai: ['gpt-4o-mini','gpt-4o','gpt-4-turbo','gpt-3.5-turbo'],
+        anthropic: ['claude-sonnet-4-20250514','claude-3-5-haiku-20241022','claude-3-opus-20240229'],
+        google: ['gemini-1.5-flash','gemini-1.5-pro','gemini-pro'],
+    };
+    const p = document.getElementById('agentProvider').value;
+    const sel = document.getElementById('agentModel');
+    sel.innerHTML = (models[p]||[]).map(m => `<option value="${m}">${m}</option>`).join('');
+};
+
+async function saveAgent() {
+    const body = {
+        name: document.getElementById('agentName').value,
+        description: document.getElementById('agentDesc').value,
+        system_prompt: document.getElementById('agentPrompt').value,
+        llm_provider: document.getElementById('agentProvider').value,
+        llm_model: document.getElementById('agentModel').value,
+    };
+    const key = document.getElementById('agentApiKey').value;
+    if (key) body.llm_api_key = key;
+    try {
+        await api(`/api/agents/${currentAgent.id}`, { method: 'PUT', body: JSON.stringify(body) });
+        toast('✅ Đã lưu!');
+        loadAgents();
+        renderAgent();
+    } catch(e) { toast('❌ ' + e.message); }
+}
+
+async function deleteAgent() {
+    if (!confirm('Xoá agent này? Hành động không thể hoàn tác.')) return;
+    try {
+        await api(`/api/agents/${currentAgent.id}`, { method: 'DELETE' });
+        toast('Đã xoá agent');
+        currentAgent = null;
+        loadAgents();
+        showView('overview');
+    } catch(e) { toast('❌ ' + e.message); }
+}
+
+// KNOWLEDGE TAB
+function renderKnowledgeTab(el) {
+    const kb = currentAgent.knowledge_base || [];
+    el.innerHTML = `
+        <h3 style="font-size:16px;color:#fff;margin-bottom:16px">Kiến thức (${kb.length} mục)</h3>
+        <div class="form-row"><label>Tiêu đề</label><input type="text" id="kbTitle" placeholder="VD: Chính sách đổi trả"></div>
+        <div class="form-row"><label>Nội dung</label><textarea id="kbContent" placeholder="Nội dung chi tiết..." rows="3"></textarea></div>
+        <button class="btn btn-primary btn-sm" onclick="addKB()">+ Thêm kiến thức</button>
+        <div class="kb-list">${kb.map(k => `
+            <div class="kb-item">
+                <div><h4>${esc(k.title)}</h4><p>${esc(k.content).substring(0,120)}${k.content.length>120?'...':''}</p></div>
+                <button class="kb-delete" onclick="deleteKB('${k.id}')">&times;</button>
+            </div>
+        `).join('')}</div>
+    `;
+}
+
+async function addKB() {
+    const title = document.getElementById('kbTitle').value;
+    const content = document.getElementById('kbContent').value;
+    if (!title || !content) { toast('Vui lòng nhập tiêu đề và nội dung'); return; }
+    try {
+        await api(`/api/agents/${currentAgent.id}/knowledge`, { method: 'POST', body: JSON.stringify({ title, content }) });
+        toast('✅ Đã thêm!');
+        renderAgent();
+    } catch(e) { toast('❌ ' + e.message); }
+}
+
+async function deleteKB(entryId) {
+    try {
+        await api(`/api/agents/${currentAgent.id}/knowledge/${entryId}`, { method: 'DELETE' });
+        toast('Đã xoá');
+        renderAgent();
+    } catch(e) { toast('❌ ' + e.message); }
+}
+
+// CHANNELS TAB
+function renderChannelsTab(el) {
+    const ch = currentAgent.channels || {};
+    el.innerHTML = `
+        <div class="channel-grid">
+            <!-- Telegram -->
+            <div class="channel-card">
+                <h4>🤖 Telegram</h4>
+                <p>Kết nối Telegram Bot để tự động trả lời khách hàng</p>
+                <div class="channel-status ${ch.telegram?.enabled?'connected':'disconnected'}">
+                    ${ch.telegram?.enabled ? '● Đã kết nối' : '○ Chưa kết nối'}
+                </div>
+                ${ch.telegram?.enabled ? `
+                    <button class="btn btn-danger btn-sm" onclick="disconnectChannel('telegram')">Ngắt kết nối</button>
+                    <button class="btn btn-ghost btn-sm" style="margin-left:8px" onclick="setupTelegramWH()">Cài webhook</button>
+                ` : `
+                    <div class="form-row"><label>Bot Token</label><input type="text" id="tgToken" placeholder="123456:ABC-xxx"></div>
+                    <button class="btn btn-primary btn-sm" onclick="connectTelegram()">Kết nối</button>
+                `}
+            </div>
+
+            <!-- Facebook -->
+            <div class="channel-card">
+                <h4>📘 Facebook</h4>
+                <p>Kết nối Facebook Messenger cho Fanpage</p>
+                <div class="channel-status ${ch.facebook?.enabled?'connected':'disconnected'}">
+                    ${ch.facebook?.enabled ? '● Đã kết nối' : '○ Chưa kết nối'}
+                </div>
+                ${ch.facebook?.enabled ? `
+                    <p style="font-size:12px;color:var(--zinc-500)">Verify token: ${esc(ch.facebook.verify_token||'')}</p>
+                    <button class="btn btn-danger btn-sm" style="margin-top:8px" onclick="disconnectChannel('facebook')">Ngắt kết nối</button>
+                ` : `
+                    <div class="form-row"><label>Page Access Token</label><input type="text" id="fbToken" placeholder="EAAxx..."></div>
+                    <button class="btn btn-primary btn-sm" onclick="connectFacebook()">Kết nối</button>
+                `}
+            </div>
+
+            <!-- Zalo -->
+            <div class="channel-card">
+                <h4>💙 Zalo OA</h4>
+                <p>Kết nối Zalo Official Account</p>
+                <div class="channel-status ${ch.zalo?.enabled?'connected':'disconnected'}">
+                    ${ch.zalo?.enabled ? '● Đã kết nối' : '○ Chưa kết nối'}
+                </div>
+                ${ch.zalo?.enabled ? `
+                    <button class="btn btn-danger btn-sm" onclick="disconnectChannel('zalo')">Ngắt kết nối</button>
+                ` : `
+                    <div class="form-row"><label>OA Token</label><input type="text" id="zaloToken" placeholder="Zalo OA token"></div>
+                    <button class="btn btn-primary btn-sm" onclick="connectZalo()">Kết nối</button>
+                `}
+            </div>
+
+            <!-- Webchat -->
+            <div class="channel-card">
+                <h4>🌐 Webchat Widget</h4>
+                <p>Nhúng chat widget vào website của bạn</p>
+                <div class="channel-status ${ch.webchat?.enabled?'connected':'disconnected'}">
+                    ${ch.webchat?.enabled ? '● Đã kích hoạt' : '○ Chưa kích hoạt'}
+                </div>
+                ${ch.webchat?.enabled ? `
+                    <div class="code-box" id="embedCode">&lt;script src="${location.origin}/widget.js" data-agent="${currentAgent.id}" data-widget="${ch.webchat.widget_id}"&gt;&lt;/script&gt;
+                        <button class="code-copy" onclick="copyEmbed()">Copy</button>
+                    </div>
+                    <button class="btn btn-danger btn-sm" style="margin-top:12px" onclick="disconnectChannel('webchat')">Tắt widget</button>
+                ` : `
+                    <button class="btn btn-primary btn-sm" onclick="connectWebchat()">Kích hoạt Widget</button>
+                `}
+            </div>
+        </div>
+    `;
+}
+
+async function connectTelegram() {
+    const t = document.getElementById('tgToken').value;
+    if (!t) { toast('Vui lòng nhập Bot Token'); return; }
+    try {
+        await api(`/api/agents/${currentAgent.id}/channels`, { method: 'POST', body: JSON.stringify({ type: 'telegram', bot_token: t }) });
+        toast('✅ Đã kết nối Telegram!');
+        renderAgent();
+    } catch(e) { toast('❌ ' + e.message); }
+}
+
+async function connectFacebook() {
+    const t = document.getElementById('fbToken').value;
+    if (!t) { toast('Vui lòng nhập Page Token'); return; }
+    try {
+        await api(`/api/agents/${currentAgent.id}/channels`, { method: 'POST', body: JSON.stringify({ type: 'facebook', page_token: t }) });
+        toast('✅ Đã kết nối Facebook!');
+        renderAgent();
+    } catch(e) { toast('❌ ' + e.message); }
+}
+
+async function connectZalo() {
+    const t = document.getElementById('zaloToken').value;
+    if (!t) { toast('Vui lòng nhập OA Token'); return; }
+    try {
+        await api(`/api/agents/${currentAgent.id}/channels`, { method: 'POST', body: JSON.stringify({ type: 'zalo', oa_token: t }) });
+        toast('✅ Đã kết nối Zalo!');
+        renderAgent();
+    } catch(e) { toast('❌ ' + e.message); }
+}
+
+async function connectWebchat() {
+    try {
+        const res = await api(`/api/agents/${currentAgent.id}/channels`, { method: 'POST', body: JSON.stringify({ type: 'webchat' }) });
+        toast('✅ Widget đã kích hoạt!');
+        renderAgent();
+    } catch(e) { toast('❌ ' + e.message); }
+}
+
+async function disconnectChannel(type) {
+    try {
+        await api(`/api/agents/${currentAgent.id}/channels/${type}`, { method: 'DELETE' });
+        toast('Đã ngắt kết nối');
+        renderAgent();
+    } catch(e) { toast('❌ ' + e.message); }
+}
+
+async function setupTelegramWH() {
+    try {
+        const res = await api(`/api/agents/${currentAgent.id}/setup-telegram`, { method: 'POST' });
+        toast(res.status === 'ok' ? '✅ Webhook đã cài!' : '❌ Lỗi: ' + JSON.stringify(res.telegram_response));
+    } catch(e) { toast('❌ ' + e.message); }
+}
+
+function copyEmbed() {
+    const code = document.getElementById('embedCode').textContent.replace('Copy','').trim();
+    navigator.clipboard.writeText(code);
+    toast('Đã copy!');
+}
+
+// CONVERSATIONS TAB (per agent)
+async function renderConvosTab(el) {
+    try {
+        const data = await api(`/api/agents/${currentAgent.id}/conversations`);
+        const convs = data.conversations || [];
+        if (!convs.length) {
+            el.innerHTML = '<div class="empty-state"><div class="icon">💬</div><h3>Chưa có hội thoại</h3><p>Hội thoại sẽ xuất hiện khi khách hàng gửi tin nhắn.</p></div>';
+            return;
+        }
+        el.innerHTML = `<div class="conv-list">${convs.map(c => `
+            <div class="conv-item" onclick="openConvo('${currentAgent.id}','${esc(c.id)}')">
+                <div class="conv-avatar">${channelIcon(c.channel)}</div>
+                <div class="conv-info">
+                    <div class="conv-name">${esc(c.sender_name || c.sender_id)}</div>
+                    <div class="conv-preview">${esc(c.last_message?.content||'...')}</div>
+                </div>
+                <div class="conv-meta">
+                    <div class="conv-time">${timeAgo(c.last_message?.timestamp)}</div>
+                    <div class="conv-badge-ch">${c.channel}</div>
+                </div>
+            </div>
+        `).join('')}</div>`;
+    } catch(e) { el.innerHTML = `<p style="color:var(--red)">${e.message}</p>`; }
+}
+
+async function openConvo(agentId, convId) {
+    try {
+        const data = await api(`/api/agents/${agentId}/conversations/${convId}`);
+        const msgs = data.messages || [];
+        const el = document.getElementById('agentTabContent');
+        el.innerHTML = `
+            <button class="btn btn-ghost btn-sm" onclick="renderConvosTab(document.getElementById('agentTabContent'))" style="margin-bottom:16px">← Quay lại</button>
+            <div class="messages-body" style="max-height:60vh;overflow-y:auto">
+                ${msgs.map(m => `
+                    <div class="msg ${m.role}">
+                        ${esc(m.content)}
+                        <div class="msg-time">${new Date(m.timestamp).toLocaleString('vi')}</div>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    } catch(e) { toast('❌ ' + e.message); }
+}
+
+// ALL CONVERSATIONS
+async function renderAllConversations() {
+    document.getElementById('topbarTitle').textContent = 'Hội thoại';
+    const c = document.getElementById('content');
+    c.innerHTML = '<p style="color:var(--zinc-500)">Đang tải...</p>';
+    let allConvs = [];
+    for (const a of agents) {
+        try {
+            const data = await api(`/api/agents/${a.id}/conversations`);
+            (data.conversations||[]).forEach(cv => { cv.agent_name = a.name; allConvs.push(cv); });
+        } catch(e) {}
+    }
+    if (!allConvs.length) {
+        c.innerHTML = '<div class="empty-state"><div class="icon">💬</div><h3>Chưa có hội thoại nào</h3></div>';
+        return;
+    }
+    document.getElementById('convCount').textContent = allConvs.length;
+    c.innerHTML = `<div class="conv-list">${allConvs.map(cv => `
+        <div class="conv-item" onclick="selectAgent('${cv.agent_id}');switchAgentTab('convos')">
+            <div class="conv-avatar">${channelIcon(cv.channel)}</div>
+            <div class="conv-info">
+                <div class="conv-name">${esc(cv.sender_name||cv.sender_id)} <span style="color:var(--zinc-500);font-size:12px">· ${esc(cv.agent_name)}</span></div>
+                <div class="conv-preview">${esc(cv.last_message?.content||'...')}</div>
+            </div>
+            <div class="conv-meta">
+                <div class="conv-time">${timeAgo(cv.last_message?.timestamp)}</div>
+                <div class="conv-badge-ch">${cv.channel}</div>
+            </div>
+        </div>
+    `).join('')}</div>`;
+}
+
+// CREATE AGENT
+function openCreateAgent() { document.getElementById('createModal').classList.add('active'); }
+function closeCreateAgent() { document.getElementById('createModal').classList.remove('active'); }
+
+async function createAgent() {
+    const name = document.getElementById('newAgentName').value;
+    if (!name) { toast('Vui lòng nhập tên agent'); return; }
+    try {
+        const res = await api('/api/agents', {
+            method: 'POST',
+            body: JSON.stringify({
+                name,
+                description: document.getElementById('newAgentDesc').value,
+                system_prompt: document.getElementById('newAgentPrompt').value,
+            }),
+        });
+        toast('✅ Đã tạo agent!');
+        closeCreateAgent();
+        await loadAgents();
+        selectAgent(res.id);
+    } catch(e) { toast('❌ ' + e.message); }
+}
+
+// LOAD AGENTS
+async function loadAgents() {
+    try {
+        const data = await api('/api/agents');
+        agents = data.agents || [];
+    } catch(e) { agents = []; }
+    const list = document.getElementById('agentList');
+    if (!agents.length) {
+        list.innerHTML = '<div style="padding:8px 12px;font-size:13px;color:var(--zinc-500)">Chưa có agent nào</div>';
+    } else {
+        list.innerHTML = agents.map(a => `
+            <div class="agent-item ${currentAgent?.id===a.id?'active':''}" data-id="${a.id}" onclick="selectAgent('${a.id}')">
+                <div class="agent-dot ${a.active?'':'inactive'}"></div>
+                <span class="agent-name">${esc(a.name)}</span>
+            </div>
+        `).join('');
+    }
+}
+
+// HELPERS
+function esc(s) { if(!s) return ''; const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function channelIcon(ch) { return {telegram:'🤖',facebook:'📘',zalo:'💙',webchat:'🌐'}[ch]||'💬'; }
+function timeAgo(ts) {
+    if(!ts) return '';
+    const d = (Date.now() - new Date(ts).getTime())/1000;
+    if(d<60) return 'vừa xong';
+    if(d<3600) return Math.floor(d/60)+'p';
+    if(d<86400) return Math.floor(d/3600)+'h';
+    return Math.floor(d/86400)+'d';
+}
+
+// INIT
+(async () => {
+    await loadAgents();
+    renderOverview();
+})();
+
+// Mobile menu
+if (window.innerWidth <= 768) document.getElementById('menuBtn').style.display = 'inline-flex';
+
+// Modal close on overlay click
+document.getElementById('createModal').addEventListener('click', e => { if(e.target===e.currentTarget) closeCreateAgent(); });
+</script>
+</body>
+</html>
