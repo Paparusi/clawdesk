@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ClawDesk — Nền tảng CSKH đa kênh</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <title>ClawDesk — Nền tảng CSKH tự động với AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -13,282 +13,910 @@
             --zinc-300: #d4d4d8; --zinc-400: #a1a1aa; --zinc-500: #71717a;
             --zinc-600: #52525b; --zinc-700: #3f3f46; --zinc-800: #27272a;
             --zinc-900: #18181b; --zinc-950: #09090b;
-            --slate-800: #1e293b; --slate-900: #0f172a;
-            --accent: #818cf8; --accent-hover: #6366f1;
-            --green: #34d399; --orange: #fb923c; --red: #f87171;
+            --accent: #818cf8; --accent-hover: #6366f1; --accent-light: #a5b4fc;
+            --green: #34d399; --orange: #fb923c; --red: #f87171; --purple: #c084fc;
         }
 
         body {
-            font-family: 'Inter', -apple-system, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             background: var(--zinc-950);
             color: var(--zinc-200);
             line-height: 1.6;
             overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
         }
 
-        /* NAV */
+        /* === NAV === */
         nav {
             position: fixed; top: 0; left: 0; right: 0; z-index: 100;
-            background: rgba(9,9,11,.8); backdrop-filter: blur(16px);
-            border-bottom: 1px solid var(--zinc-800);
+            background: rgba(9,9,11,.85); backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255,255,255,.05);
+            transition: all .3s;
         }
+        nav.scrolled { background: rgba(9,9,11,.95); box-shadow: 0 4px 24px rgba(0,0,0,.3); }
         .nav-inner {
-            max-width: 1200px; margin: 0 auto; padding: 0 24px;
-            display: flex; align-items: center; justify-content: space-between; height: 64px;
+            max-width: 1280px; margin: 0 auto; padding: 0 24px;
+            display: flex; align-items: center; justify-content: space-between; height: 72px;
         }
-        .logo { font-size: 20px; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 8px; }
-        .logo span { background: linear-gradient(135deg, var(--accent), #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .nav-links { display: flex; gap: 32px; }
-        .nav-links a { color: var(--zinc-400); text-decoration: none; font-size: 14px; font-weight: 500; transition: color .2s; }
+        .logo { 
+            font-size: 22px; font-weight: 800; color: #fff; 
+            display: flex; align-items: center; gap: 10px; letter-spacing: -.02em;
+        }
+        .logo .emoji { font-size: 28px; }
+        .logo span { 
+            background: linear-gradient(135deg, var(--accent), var(--purple)); 
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; 
+        }
+        .nav-links { display: flex; gap: 40px; }
+        .nav-links a { 
+            color: var(--zinc-400); text-decoration: none; font-size: 15px; 
+            font-weight: 500; transition: color .2s; position: relative;
+        }
         .nav-links a:hover { color: #fff; }
-        .nav-btns { display: flex; gap: 12px; }
+        .nav-links a::after {
+            content: ''; position: absolute; bottom: -4px; left: 0; right: 0; height: 2px;
+            background: var(--accent); transform: scaleX(0); transition: transform .3s;
+        }
+        .nav-links a:hover::after { transform: scaleX(1); }
+        .nav-btns { display: flex; gap: 12px; align-items: center; }
+        .hamburger { display: none; flex-direction: column; gap: 5px; cursor: pointer; }
+        .hamburger span { width: 24px; height: 2px; background: var(--zinc-300); transition: all .3s; }
 
-        /* BUTTONS */
+        /* === BUTTONS === */
         .btn {
             display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-            padding: 10px 20px; border-radius: 10px; font-size: 14px; font-weight: 600;
-            cursor: pointer; border: none; transition: all .2s; font-family: inherit;
+            padding: 12px 24px; border-radius: 10px; font-size: 15px; font-weight: 600;
+            cursor: pointer; border: none; transition: all .3s; font-family: inherit;
+            text-decoration: none;
         }
-        .btn-ghost { background: transparent; color: var(--zinc-300); border: 1px solid var(--zinc-700); }
-        .btn-ghost:hover { background: var(--zinc-800); color: #fff; }
-        .btn-primary { background: var(--accent); color: #fff; }
-        .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 8px 24px rgba(99,102,241,.3); }
-        .btn-sm { padding: 8px 16px; font-size: 13px; }
+        .btn-ghost { 
+            background: transparent; color: var(--zinc-300); 
+            border: 1px solid rgba(255,255,255,.1); 
+        }
+        .btn-ghost:hover { background: rgba(255,255,255,.05); color: #fff; border-color: rgba(255,255,255,.2); }
+        .btn-primary { 
+            background: linear-gradient(135deg, var(--accent), var(--accent-hover)); 
+            color: #fff; position: relative; overflow: hidden;
+        }
+        .btn-primary::before {
+            content: ''; position: absolute; inset: 0; 
+            background: linear-gradient(135deg, var(--accent-light), var(--accent));
+            opacity: 0; transition: opacity .3s;
+        }
+        .btn-primary:hover::before { opacity: 1; }
+        .btn-primary:hover { 
+            transform: translateY(-2px); 
+            box-shadow: 0 12px 32px rgba(99,102,241,.4); 
+        }
+        .btn span { position: relative; z-index: 1; }
+        .btn-sm { padding: 10px 20px; font-size: 14px; }
 
-        /* HERO */
+        /* === HERO === */
         .hero {
             min-height: 100vh; display: flex; align-items: center; justify-content: center;
-            text-align: center; padding: 100px 24px 60px;
-            background: radial-gradient(ellipse at top, rgba(99,102,241,.08) 0%, transparent 60%);
+            text-align: center; padding: 120px 24px 80px; position: relative; overflow: hidden;
         }
-        .hero-content { max-width: 800px; }
+        .hero-bg {
+            position: absolute; inset: 0; overflow: hidden; z-index: 0;
+        }
+        .gradient-orb {
+            position: absolute; border-radius: 50%; filter: blur(120px); opacity: .4;
+            animation: float 20s ease-in-out infinite;
+        }
+        .orb-1 { 
+            width: 600px; height: 600px; top: -200px; left: -100px;
+            background: radial-gradient(circle, var(--accent) 0%, transparent 70%);
+        }
+        .orb-2 { 
+            width: 500px; height: 500px; top: 100px; right: -150px;
+            background: radial-gradient(circle, var(--purple) 0%, transparent 70%);
+            animation-delay: -5s;
+        }
+        .orb-3 { 
+            width: 400px; height: 400px; bottom: -100px; left: 50%;
+            background: radial-gradient(circle, var(--green) 0%, transparent 70%);
+            animation-delay: -10s;
+        }
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -30px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.9); }
+        }
+        
+        .hero-content { max-width: 900px; position: relative; z-index: 1; }
         .badge {
-            display: inline-flex; align-items: center; gap: 6px;
-            background: rgba(99,102,241,.12); border: 1px solid rgba(99,102,241,.2);
-            padding: 6px 14px; border-radius: 100px; font-size: 13px; color: var(--accent);
-            margin-bottom: 24px;
+            display: inline-flex; align-items: center; gap: 8px;
+            background: rgba(129,140,248,.12); border: 1px solid rgba(129,140,248,.25);
+            padding: 8px 18px; border-radius: 100px; font-size: 14px; color: var(--accent-light);
+            margin-bottom: 32px; animation: fadeInUp .6s ease-out;
+            backdrop-filter: blur(10px);
         }
-        .hero h1 { font-size: clamp(36px, 6vw, 64px); font-weight: 800; color: #fff; line-height: 1.1; margin-bottom: 16px; }
-        .hero h1 .gradient { background: linear-gradient(135deg, var(--accent), #c084fc, var(--green)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        .hero p { font-size: 18px; color: var(--zinc-400); max-width: 600px; margin: 0 auto 32px; }
-        .hero-btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+        .hero h1 { 
+            font-size: clamp(40px, 7vw, 72px); font-weight: 900; color: #fff; 
+            line-height: 1.1; margin-bottom: 24px; letter-spacing: -.03em;
+            animation: fadeInUp .8s ease-out .2s backwards;
+        }
+        .hero h1 .gradient { 
+            background: linear-gradient(135deg, var(--accent), var(--purple), var(--green)); 
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            animation: shimmer 3s ease-in-out infinite;
+        }
+        @keyframes shimmer {
+            0%, 100% { filter: brightness(1) saturate(1); }
+            50% { filter: brightness(1.2) saturate(1.3); }
+        }
+        .typewriter { 
+            display: inline-block; 
+            border-right: 3px solid var(--accent);
+            animation: blink .7s step-end infinite;
+        }
+        @keyframes blink {
+            50% { border-color: transparent; }
+        }
+        .hero p { 
+            font-size: 20px; color: var(--zinc-400); max-width: 700px; 
+            margin: 0 auto 40px; line-height: 1.7;
+            animation: fadeInUp 1s ease-out .4s backwards;
+        }
+        .hero-btns { 
+            display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
+            animation: fadeInUp 1.2s ease-out .6s backwards;
+        }
+        
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
 
-        /* FEATURES */
-        .section { padding: 100px 24px; max-width: 1200px; margin: 0 auto; }
-        .section-title { text-align: center; margin-bottom: 60px; }
-        .section-title h2 { font-size: 36px; font-weight: 700; color: #fff; margin-bottom: 12px; }
-        .section-title p { color: var(--zinc-400); font-size: 16px; }
+        /* Floating UI Mockup */
+        .hero-mockup {
+            margin-top: 60px; position: relative;
+            animation: fadeInUp 1.4s ease-out .8s backwards;
+        }
+        .mockup-card {
+            background: rgba(24,24,27,.8); border: 1px solid rgba(255,255,255,.1);
+            border-radius: 20px; padding: 24px; max-width: 800px; margin: 0 auto;
+            backdrop-filter: blur(20px); box-shadow: 0 20px 60px rgba(0,0,0,.5);
+            animation: float-mockup 6s ease-in-out infinite;
+        }
+        @keyframes float-mockup {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+        .mockup-card img { width: 100%; border-radius: 12px; }
 
+        /* === TRUST BAR === */
+        .trust-bar {
+            padding: 80px 24px; text-align: center; border-bottom: 1px solid rgba(255,255,255,.05);
+        }
+        .trust-bar p {
+            font-size: 14px; color: var(--zinc-500); text-transform: uppercase;
+            letter-spacing: .1em; margin-bottom: 32px; font-weight: 600;
+        }
+        .trust-logos {
+            display: flex; justify-content: center; align-items: center; 
+            gap: 48px; flex-wrap: wrap; max-width: 1000px; margin: 0 auto;
+        }
+        .trust-logo {
+            width: 100px; height: 40px; background: var(--zinc-800);
+            border-radius: 8px; opacity: .5; transition: opacity .3s;
+        }
+        .trust-logo:hover { opacity: .8; }
+
+        /* === SECTION === */
+        .section { padding: 120px 24px; max-width: 1280px; margin: 0 auto; }
+        .section-title { text-align: center; margin-bottom: 80px; }
+        .section-title .label {
+            font-size: 14px; color: var(--accent-light); font-weight: 600;
+            text-transform: uppercase; letter-spacing: .1em; margin-bottom: 16px;
+        }
+        .section-title h2 { 
+            font-size: clamp(32px, 5vw, 48px); font-weight: 800; color: #fff; 
+            margin-bottom: 16px; letter-spacing: -.02em;
+        }
+        .section-title p { color: var(--zinc-400); font-size: 18px; max-width: 600px; margin: 0 auto; }
+
+        /* === FEATURES === */
         .features-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-            gap: 24px;
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 32px;
         }
         .feature-card {
-            background: var(--zinc-900); border: 1px solid var(--zinc-800); border-radius: 16px;
-            padding: 32px; transition: all .3s;
+            background: linear-gradient(180deg, rgba(255,255,255,.03) 0%, rgba(255,255,255,.01) 100%);
+            border: 1px solid rgba(255,255,255,.08); border-radius: 20px;
+            padding: 40px; transition: all .4s; position: relative; overflow: hidden;
         }
-        .feature-card:hover { border-color: var(--zinc-700); transform: translateY(-4px); }
+        .feature-card::before {
+            content: ''; position: absolute; inset: 0; 
+            background: radial-gradient(circle at top left, var(--accent), transparent 60%);
+            opacity: 0; transition: opacity .4s;
+        }
+        .feature-card:hover::before { opacity: .08; }
+        .feature-card:hover { 
+            border-color: rgba(129,140,248,.3); transform: translateY(-8px); 
+            box-shadow: 0 24px 48px rgba(0,0,0,.3);
+        }
         .feature-icon {
-            width: 48px; height: 48px; border-radius: 12px;
+            width: 64px; height: 64px; border-radius: 16px;
             display: flex; align-items: center; justify-content: center;
-            font-size: 24px; margin-bottom: 16px;
+            font-size: 32px; margin-bottom: 24px; position: relative;
+            animation: bounce 2s ease-in-out infinite;
         }
-        .fi-blue { background: rgba(99,102,241,.15); }
-        .fi-green { background: rgba(52,211,153,.15); }
-        .fi-orange { background: rgba(251,146,60,.15); }
-        .fi-purple { background: rgba(192,132,252,.15); }
-        .feature-card h3 { font-size: 18px; font-weight: 600; color: #fff; margin-bottom: 8px; }
-        .feature-card p { font-size: 14px; color: var(--zinc-400); }
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .feature-card:nth-child(1) .feature-icon { animation-delay: 0s; }
+        .feature-card:nth-child(2) .feature-icon { animation-delay: .2s; }
+        .feature-card:nth-child(3) .feature-icon { animation-delay: .4s; }
+        .feature-card:nth-child(4) .feature-icon { animation-delay: .6s; }
+        .feature-card:nth-child(5) .feature-icon { animation-delay: .8s; }
+        .feature-card:nth-child(6) .feature-icon { animation-delay: 1s; }
+        
+        .fi-gradient-1 { background: linear-gradient(135deg, rgba(129,140,248,.2), rgba(99,102,241,.1)); }
+        .fi-gradient-2 { background: linear-gradient(135deg, rgba(52,211,153,.2), rgba(16,185,129,.1)); }
+        .fi-gradient-3 { background: linear-gradient(135deg, rgba(251,146,60,.2), rgba(249,115,22,.1)); }
+        .fi-gradient-4 { background: linear-gradient(135deg, rgba(192,132,252,.2), rgba(168,85,247,.1)); }
+        .fi-gradient-5 { background: linear-gradient(135deg, rgba(96,165,250,.2), rgba(59,130,246,.1)); }
+        .fi-gradient-6 { background: linear-gradient(135deg, rgba(248,113,113,.2), rgba(239,68,68,.1)); }
+        
+        .feature-card h3 { font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 12px; }
+        .feature-card p { font-size: 15px; color: var(--zinc-400); line-height: 1.7; }
 
-        /* PRICING */
+        /* === HOW IT WORKS === */
+        .how-it-works { background: rgba(255,255,255,.02); }
+        .steps {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 48px; position: relative;
+        }
+        .step {
+            text-align: center; padding: 40px 24px; position: relative;
+        }
+        .step-number {
+            width: 60px; height: 60px; border-radius: 50%;
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            color: #fff; font-size: 24px; font-weight: 800;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 24px; box-shadow: 0 8px 24px rgba(129,140,248,.3);
+        }
+        .step h3 { font-size: 20px; color: #fff; margin-bottom: 12px; font-weight: 700; }
+        .step p { color: var(--zinc-400); font-size: 15px; }
+
+        /* Step connectors */
+        @media (min-width: 768px) {
+            .step:not(:last-child)::after {
+                content: '→'; position: absolute; right: -24px; top: 60px;
+                font-size: 32px; color: var(--zinc-700);
+            }
+        }
+
+        /* === TESTIMONIALS === */
+        .testimonials-slider {
+            position: relative; overflow: hidden; max-width: 1200px; margin: 0 auto;
+        }
+        .testimonials-track {
+            display: flex; gap: 32px; animation: scroll 30s linear infinite;
+        }
+        .testimonials-track:hover { animation-play-state: paused; }
+        @keyframes scroll {
+            0% { transform: translateX(0); }
+            100% { transform: translateX(calc(-33.333% - 32px)); }
+        }
+        .testimonial-card {
+            min-width: 380px; background: rgba(255,255,255,.03);
+            border: 1px solid rgba(255,255,255,.08); border-radius: 20px;
+            padding: 32px; flex-shrink: 0;
+        }
+        .stars {
+            color: var(--orange); font-size: 18px; margin-bottom: 16px;
+        }
+        .testimonial-card p {
+            font-size: 15px; color: var(--zinc-300); line-height: 1.7;
+            margin-bottom: 20px; font-style: italic;
+        }
+        .testimonial-author {
+            display: flex; align-items: center; gap: 12px;
+        }
+        .testimonial-avatar {
+            width: 48px; height: 48px; border-radius: 50%;
+            background: var(--zinc-700); display: flex; align-items: center;
+            justify-content: center; font-size: 20px;
+        }
+        .testimonial-info h4 { font-size: 15px; color: #fff; font-weight: 600; }
+        .testimonial-info p { font-size: 13px; color: var(--zinc-500); margin: 0; }
+
+        /* === PRICING === */
+        .pricing-toggle {
+            display: flex; justify-content: center; align-items: center; gap: 16px;
+            margin-bottom: 60px;
+        }
+        .pricing-toggle span { font-size: 15px; color: var(--zinc-400); font-weight: 500; }
+        .pricing-toggle span.active { color: #fff; }
+        .toggle-switch {
+            width: 56px; height: 32px; background: var(--zinc-800); border-radius: 100px;
+            position: relative; cursor: pointer; transition: background .3s;
+        }
+        .toggle-switch.active { background: var(--accent); }
+        .toggle-switch::after {
+            content: ''; position: absolute; top: 4px; left: 4px;
+            width: 24px; height: 24px; background: #fff; border-radius: 50%;
+            transition: transform .3s;
+        }
+        .toggle-switch.active::after { transform: translateX(24px); }
+        
         .pricing-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 24px; max-width: 1000px; margin: 0 auto;
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 32px; max-width: 1100px; margin: 0 auto;
         }
         .price-card {
-            background: var(--zinc-900); border: 1px solid var(--zinc-800); border-radius: 20px;
-            padding: 36px; position: relative; transition: all .3s;
+            background: rgba(24,24,27,.6); border: 1px solid rgba(255,255,255,.08);
+            border-radius: 24px; padding: 40px; position: relative; transition: all .4s;
+            backdrop-filter: blur(10px);
+        }
+        .price-card:hover { 
+            border-color: rgba(129,140,248,.3); transform: translateY(-8px);
+            box-shadow: 0 24px 48px rgba(0,0,0,.4);
         }
         .price-card.popular {
-            border-color: var(--accent);
-            background: linear-gradient(180deg, rgba(99,102,241,.06) 0%, var(--zinc-900) 100%);
+            border-color: var(--accent); background: rgba(129,140,248,.05);
+            box-shadow: 0 0 0 1px var(--accent) inset;
         }
         .popular-badge {
-            position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
-            background: var(--accent); color: #fff; padding: 4px 16px; border-radius: 100px;
-            font-size: 12px; font-weight: 600;
+            position: absolute; top: -16px; left: 50%; transform: translateX(-50%);
+            background: linear-gradient(135deg, var(--accent), var(--purple));
+            color: #fff; padding: 6px 20px; border-radius: 100px;
+            font-size: 13px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: .05em; box-shadow: 0 4px 12px rgba(129,140,248,.4);
         }
-        .price-card h3 { font-size: 20px; font-weight: 600; color: #fff; margin-bottom: 8px; }
-        .price { font-size: 40px; font-weight: 800; color: #fff; margin: 16px 0; }
-        .price small { font-size: 16px; font-weight: 400; color: var(--zinc-400); }
-        .price-features { list-style: none; margin: 24px 0; }
+        .price-card h3 { 
+            font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 8px; 
+        }
+        .price-card .desc { font-size: 14px; color: var(--zinc-400); margin-bottom: 24px; }
+        .price { 
+            font-size: 48px; font-weight: 900; color: #fff; margin: 24px 0;
+            letter-spacing: -.02em;
+        }
+        .price small { font-size: 18px; font-weight: 400; color: var(--zinc-400); }
+        .price-annual { 
+            font-size: 14px; color: var(--green); margin-top: -16px; 
+            margin-bottom: 24px; font-weight: 600;
+        }
+        .price-features { list-style: none; margin: 32px 0; }
         .price-features li {
-            padding: 8px 0; font-size: 14px; color: var(--zinc-300);
-            display: flex; align-items: center; gap: 10px;
+            padding: 12px 0; font-size: 15px; color: var(--zinc-300);
+            display: flex; align-items: flex-start; gap: 12px;
         }
-        .price-features li::before { content: "✓"; color: var(--green); font-weight: 700; }
+        .price-features li::before { 
+            content: "✓"; color: var(--green); font-weight: 700; 
+            font-size: 18px; flex-shrink: 0;
+        }
 
-        /* MODAL */
-        .modal-overlay {
-            display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7);
-            backdrop-filter: blur(4px); z-index: 200; align-items: center; justify-content: center;
+        /* === CTA === */
+        .cta-section {
+            background: linear-gradient(135deg, rgba(129,140,248,.1), rgba(192,132,252,.1));
+            border: 1px solid rgba(255,255,255,.1); border-radius: 32px;
+            padding: 80px 40px; text-align: center; position: relative; overflow: hidden;
         }
-        .modal-overlay.active { display: flex; }
-        .modal {
-            background: var(--zinc-900); border: 1px solid var(--zinc-700); border-radius: 20px;
-            padding: 40px; width: 100%; max-width: 420px; position: relative;
+        .cta-section::before {
+            content: ''; position: absolute; inset: 0;
+            background: radial-gradient(circle at center, var(--accent), transparent 70%);
+            opacity: .15;
         }
-        .modal h2 { font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 8px; }
-        .modal p { color: var(--zinc-400); font-size: 14px; margin-bottom: 24px; }
-        .modal-close {
-            position: absolute; top: 16px; right: 16px; background: none; border: none;
-            color: var(--zinc-400); font-size: 24px; cursor: pointer;
+        .cta-content { position: relative; z-index: 1; max-width: 700px; margin: 0 auto; }
+        .cta-section h2 { 
+            font-size: clamp(32px, 5vw, 48px); font-weight: 900; 
+            color: #fff; margin-bottom: 20px; letter-spacing: -.02em;
         }
-        .form-group { margin-bottom: 16px; }
-        .form-group label { display: block; font-size: 13px; font-weight: 500; color: var(--zinc-300); margin-bottom: 6px; }
-        .form-group input {
-            width: 100%; padding: 12px 16px; border-radius: 10px; border: 1px solid var(--zinc-700);
-            background: var(--zinc-800); color: #fff; font-size: 14px; font-family: inherit;
-            outline: none; transition: border-color .2s;
+        .cta-section p { 
+            font-size: 18px; color: var(--zinc-300); margin-bottom: 32px; 
         }
-        .form-group input:focus { border-color: var(--accent); }
-        .form-error { color: var(--red); font-size: 13px; margin-top: 6px; display: none; }
-        .form-tabs { display: flex; gap: 0; margin-bottom: 24px; background: var(--zinc-800); border-radius: 10px; padding: 4px; }
-        .form-tab {
-            flex: 1; padding: 8px; text-align: center; border-radius: 8px; cursor: pointer;
-            font-size: 14px; font-weight: 500; color: var(--zinc-400); transition: all .2s;
-        }
-        .form-tab.active { background: var(--zinc-700); color: #fff; }
 
-        /* FOOTER */
+        /* === FOOTER === */
         footer {
-            border-top: 1px solid var(--zinc-800); padding: 40px 24px; text-align: center;
-            color: var(--zinc-500); font-size: 14px;
+            border-top: 1px solid rgba(255,255,255,.05); padding: 80px 24px 40px;
+            max-width: 1280px; margin: 0 auto;
+        }
+        .footer-grid {
+            display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr;
+            gap: 48px; margin-bottom: 48px;
+        }
+        .footer-col h4 { 
+            font-size: 14px; font-weight: 700; color: #fff; 
+            margin-bottom: 16px; text-transform: uppercase; letter-spacing: .05em;
+        }
+        .footer-col ul { list-style: none; }
+        .footer-col ul li { margin-bottom: 12px; }
+        .footer-col ul li a { 
+            color: var(--zinc-400); text-decoration: none; 
+            font-size: 14px; transition: color .2s;
+        }
+        .footer-col ul li a:hover { color: #fff; }
+        .footer-brand { margin-bottom: 20px; }
+        .footer-brand .logo { font-size: 20px; margin-bottom: 12px; }
+        .footer-brand p { color: var(--zinc-500); font-size: 14px; line-height: 1.7; }
+        .newsletter { margin-top: 24px; }
+        .newsletter input {
+            width: 100%; padding: 12px 16px; border-radius: 10px;
+            border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.05);
+            color: #fff; font-size: 14px; margin-bottom: 12px; font-family: inherit;
+        }
+        .newsletter input:focus { 
+            outline: none; border-color: var(--accent); 
+        }
+        .social-links {
+            display: flex; gap: 12px; margin-top: 20px;
+        }
+        .social-links a {
+            width: 40px; height: 40px; border-radius: 50%;
+            background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+            display: flex; align-items: center; justify-content: center;
+            color: var(--zinc-400); transition: all .3s; text-decoration: none;
+        }
+        .social-links a:hover { 
+            background: var(--accent); color: #fff; 
+            border-color: var(--accent); transform: translateY(-2px);
+        }
+        .footer-bottom {
+            padding-top: 32px; border-top: 1px solid rgba(255,255,255,.05);
+            text-align: center; color: var(--zinc-500); font-size: 14px;
         }
 
+        /* === MOBILE NAV === */
+        .mobile-nav {
+            position: fixed; top: 72px; left: 0; right: 0; bottom: 0;
+            background: rgba(9,9,11,.98); backdrop-filter: blur(20px);
+            transform: translateX(-100%); transition: transform .3s;
+            z-index: 99; padding: 40px 24px;
+        }
+        .mobile-nav.open { transform: translateX(0); }
+        .mobile-nav .nav-links { flex-direction: column; gap: 24px; }
+        .mobile-nav .nav-links a { font-size: 24px; }
+        .mobile-nav .nav-btns { flex-direction: column; margin-top: 32px; width: 100%; }
+        .mobile-nav .btn { width: 100%; justify-content: center; }
+
+        /* === MODAL === */
+        .modal-overlay {
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,.8);
+            backdrop-filter: blur(8px); z-index: 200; align-items: center; justify-content: center;
+        }
+        .modal-overlay.active { display: flex; animation: fadeIn .3s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .modal {
+            background: var(--zinc-900); border: 1px solid rgba(255,255,255,.1); 
+            border-radius: 24px; padding: 48px; width: 100%; max-width: 480px; 
+            position: relative; animation: slideUp .4s;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(40px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .modal h2 { font-size: 28px; font-weight: 800; color: #fff; margin-bottom: 8px; }
+        .modal p { color: var(--zinc-400); font-size: 15px; margin-bottom: 32px; }
+        .modal-close {
+            position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,.05);
+            border: 1px solid rgba(255,255,255,.1); color: var(--zinc-400); 
+            width: 36px; height: 36px; border-radius: 50%; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; font-size: 20px;
+            transition: all .2s;
+        }
+        .modal-close:hover { background: rgba(255,255,255,.1); color: #fff; }
+        .form-group { margin-bottom: 20px; }
+        .form-group label { 
+            display: block; font-size: 14px; font-weight: 600; 
+            color: var(--zinc-300); margin-bottom: 8px; 
+        }
+        .form-group input {
+            width: 100%; padding: 14px 18px; border-radius: 12px; 
+            border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.03);
+            color: #fff; font-size: 15px; font-family: inherit; outline: none; 
+            transition: all .2s;
+        }
+        .form-group input:focus { 
+            border-color: var(--accent); background: rgba(255,255,255,.05);
+            box-shadow: 0 0 0 3px rgba(129,140,248,.1);
+        }
+        .form-error { 
+            color: var(--red); font-size: 14px; margin-top: 8px; 
+            display: none; padding: 12px; border-radius: 10px;
+            background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.2);
+        }
+        .form-tabs { 
+            display: flex; gap: 0; margin-bottom: 32px; background: rgba(255,255,255,.05); 
+            border-radius: 12px; padding: 4px; 
+        }
+        .form-tab {
+            flex: 1; padding: 10px; text-align: center; border-radius: 10px; 
+            cursor: pointer; font-size: 15px; font-weight: 600; 
+            color: var(--zinc-400); transition: all .3s;
+        }
+        .form-tab.active { background: var(--accent); color: #fff; }
+
+        /* === SCROLL REVEAL === */
+        .reveal {
+            opacity: 0; transform: translateY(30px);
+            transition: all .6s ease-out;
+        }
+        .reveal.active { opacity: 1; transform: translateY(0); }
+        .reveal-stagger:nth-child(1) { transition-delay: .1s; }
+        .reveal-stagger:nth-child(2) { transition-delay: .2s; }
+        .reveal-stagger:nth-child(3) { transition-delay: .3s; }
+        .reveal-stagger:nth-child(4) { transition-delay: .4s; }
+        .reveal-stagger:nth-child(5) { transition-delay: .5s; }
+        .reveal-stagger:nth-child(6) { transition-delay: .6s; }
+
+        /* === RESPONSIVE === */
         @media (max-width: 768px) {
-            .nav-links { display: none; }
-            .hero h1 { font-size: 32px; }
+            .nav-links, .nav-btns { display: none; }
+            .hamburger { display: flex; }
+            .hero { padding: 100px 20px 60px; }
+            .hero h1 { font-size: 36px; }
+            .hero p { font-size: 16px; }
+            .section { padding: 80px 20px; }
+            .features-grid { grid-template-columns: 1fr; gap: 24px; }
+            .footer-grid { grid-template-columns: 1fr; gap: 32px; }
+            .pricing-grid { grid-template-columns: 1fr; }
+            .steps { grid-template-columns: 1fr; }
+            .step:not(:last-child)::after { display: none; }
+            .testimonials-track { animation: scroll 20s linear infinite; }
+            .testimonial-card { min-width: 300px; }
         }
     </style>
 </head>
 <body>
 
-<nav>
+<!-- NAV -->
+<nav id="nav">
     <div class="nav-inner">
-        <div class="logo">🤖 <span>AI Agent</span></div>
+        <div class="logo"><span class="emoji">🤖</span> <span>ClawDesk</span></div>
         <div class="nav-links">
             <a href="#features">Tính năng</a>
+            <a href="#how">Cách hoạt động</a>
             <a href="#pricing">Bảng giá</a>
         </div>
         <div class="nav-btns">
             <button class="btn btn-ghost btn-sm" onclick="openModal('login')">Đăng nhập</button>
-            <button class="btn btn-primary btn-sm" onclick="openModal('register')">Dùng thử miễn phí</button>
+            <button class="btn btn-primary btn-sm" onclick="openModal('register')"><span>Dùng thử miễn phí</span></button>
+        </div>
+        <div class="hamburger" onclick="toggleMobileNav()">
+            <span></span>
+            <span></span>
+            <span></span>
         </div>
     </div>
 </nav>
 
+<!-- MOBILE NAV -->
+<div class="mobile-nav" id="mobileNav">
+    <div class="nav-links">
+        <a href="#features" onclick="toggleMobileNav()">Tính năng</a>
+        <a href="#how" onclick="toggleMobileNav()">Cách hoạt động</a>
+        <a href="#pricing" onclick="toggleMobileNav()">Bảng giá</a>
+    </div>
+    <div class="nav-btns">
+        <button class="btn btn-ghost" onclick="openModal('login'); toggleMobileNav();">Đăng nhập</button>
+        <button class="btn btn-primary" onclick="openModal('register'); toggleMobileNav();"><span>Dùng thử miễn phí</span></button>
+    </div>
+</div>
+
 <!-- HERO -->
 <section class="hero">
+    <div class="hero-bg">
+        <div class="gradient-orb orb-1"></div>
+        <div class="gradient-orb orb-2"></div>
+        <div class="gradient-orb orb-3"></div>
+    </div>
     <div class="hero-content">
         <div class="badge">🚀 Nền tảng AI Agent thế hệ mới</div>
-        <h1>Tự động hoá <span class="gradient">Chăm Sóc Khách Hàng</span> với AI</h1>
+        <h1>Tự động hoá <span class="gradient"><span class="typewriter" id="typewriter">Chăm Sóc Khách Hàng</span></span> với AI</h1>
         <p>Nền tảng AI Agent CSKH đa kênh — Telegram, Facebook, Zalo, Webchat. Dùng API key của bạn, kiến thức của bạn, thương hiệu của bạn.</p>
         <div class="hero-btns">
-            <button class="btn btn-primary" onclick="openModal('register')">Bắt đầu miễn phí →</button>
-            <button class="btn btn-ghost" onclick="document.getElementById('features').scrollIntoView({behavior:'smooth'})">Xem tính năng</button>
+            <button class="btn btn-primary" onclick="openModal('register')"><span>Bắt đầu miễn phí →</span></button>
+            <button class="btn btn-ghost" onclick="document.getElementById('features').scrollIntoView({behavior:'smooth'})"><span>Xem tính năng</span></button>
         </div>
+        <div class="hero-mockup">
+            <div class="mockup-card">
+                <div style="aspect-ratio:16/9;background:linear-gradient(135deg,var(--zinc-800),var(--zinc-900));border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--zinc-600);font-size:48px;">📊</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- TRUST BAR -->
+<section class="trust-bar">
+    <p>Được tin dùng bởi 100+ doanh nghiệp</p>
+    <div class="trust-logos">
+        <div class="trust-logo"></div>
+        <div class="trust-logo"></div>
+        <div class="trust-logo"></div>
+        <div class="trust-logo"></div>
+        <div class="trust-logo"></div>
     </div>
 </section>
 
 <!-- FEATURES -->
 <section class="section" id="features">
-    <div class="section-title">
-        <h2>Tính năng nổi bật</h2>
-        <p>Mọi thứ bạn cần để xây dựng hệ thống CSKH AI chuyên nghiệp</p>
+    <div class="section-title reveal">
+        <div class="label">Tính năng</div>
+        <h2>Mọi thứ bạn cần cho CSKH AI</h2>
+        <p>Xây dựng hệ thống chăm sóc khách hàng tự động chuyên nghiệp trong vài phút</p>
     </div>
     <div class="features-grid">
-        <div class="feature-card">
-            <div class="feature-icon fi-blue">💬</div>
-            <h3>Đa kênh</h3>
-            <p>Kết nối Telegram, Facebook Messenger, Zalo OA và Webchat chỉ trong vài phút. Quản lý tất cả tại một nơi.</p>
+        <div class="feature-card reveal reveal-stagger">
+            <div class="feature-icon fi-gradient-1">💬</div>
+            <h3>Đa kênh tích hợp</h3>
+            <p>Kết nối Telegram, Facebook Messenger, Zalo OA và Webchat chỉ trong vài phút. Quản lý tất cả tại một nơi duy nhất.</p>
         </div>
-        <div class="feature-card">
-            <div class="feature-icon fi-green">🔑</div>
+        <div class="feature-card reveal reveal-stagger">
+            <div class="feature-icon fi-gradient-2">🔑</div>
             <h3>BYO API Key</h3>
-            <p>Dùng API key của bạn từ OpenAI, Anthropic hoặc Google. Không phụ thuộc, không markup phí.</p>
+            <p>Dùng API key của bạn từ OpenAI, Anthropic hoặc Google. Không phụ thuộc, không markup phí, toàn quyền kiểm soát chi phí.</p>
         </div>
-        <div class="feature-card">
-            <div class="feature-icon fi-orange">📚</div>
-            <h3>Knowledge Base</h3>
-            <p>Thêm FAQ, thông tin sản phẩm, chính sách — AI sẽ trả lời chính xác dựa trên kiến thức của bạn.</p>
+        <div class="feature-card reveal reveal-stagger">
+            <div class="feature-icon fi-gradient-3">📚</div>
+            <h3>Knowledge Base thông minh</h3>
+            <p>Thêm FAQ, thông tin sản phẩm, chính sách — AI sẽ trả lời chính xác dựa trên kiến thức của bạn. Tự động học và cải thiện.</p>
         </div>
-        <div class="feature-card">
-            <div class="feature-icon fi-purple">📊</div>
+        <div class="feature-card reveal reveal-stagger">
+            <div class="feature-icon fi-gradient-4">📊</div>
             <h3>Phân tích & Giám sát</h3>
-            <p>Theo dõi số tin nhắn, hội thoại, hiệu suất AI. Xem toàn bộ cuộc trò chuyện real-time.</p>
+            <p>Theo dõi số tin nhắn, hội thoại, hiệu suất AI. Xem toàn bộ cuộc trò chuyện real-time và tối ưu chiến lược CSKH.</p>
+        </div>
+        <div class="feature-card reveal reveal-stagger">
+            <div class="feature-icon fi-gradient-5">⚡</div>
+            <h3>Triển khai nhanh chóng</h3>
+            <p>Không cần code, không cần kỹ thuật phức tạp. Cài đặt và chạy agent AI của bạn trong vòng 5 phút.</p>
+        </div>
+        <div class="feature-card reveal reveal-stagger">
+            <div class="feature-icon fi-gradient-6">🛡️</div>
+            <h3>Bảo mật & Riêng tư</h3>
+            <p>Dữ liệu của bạn, server của bạn. Chúng tôi không lưu trữ API key hay nội dung hội thoại. An toàn tuyệt đối.</p>
+        </div>
+    </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="section how-it-works" id="how">
+    <div class="section-title reveal">
+        <div class="label">Cách hoạt động</div>
+        <h2>Ba bước đơn giản</h2>
+        <p>Từ zero đến hero trong vài phút</p>
+    </div>
+    <div class="steps">
+        <div class="step reveal reveal-stagger">
+            <div class="step-number">1</div>
+            <h3>Tạo Agent</h3>
+            <p>Đặt tên, thêm hướng dẫn, nhập API key của bạn. Xong!</p>
+        </div>
+        <div class="step reveal reveal-stagger">
+            <div class="step-number">2</div>
+            <h3>Thêm kiến thức</h3>
+            <p>Upload FAQ, chính sách, thông tin sản phẩm. AI sẽ học từ đó.</p>
+        </div>
+        <div class="step reveal reveal-stagger">
+            <div class="step-number">3</div>
+            <h3>Kết nối kênh</h3>
+            <p>Kết nối Telegram, Facebook, Zalo hoặc nhúng widget vào web. Done!</p>
+        </div>
+    </div>
+</section>
+
+<!-- TESTIMONIALS -->
+<section class="section">
+    <div class="section-title reveal">
+        <div class="label">Đánh giá</div>
+        <h2>Khách hàng nói gì về chúng tôi</h2>
+    </div>
+    <div class="testimonials-slider">
+        <div class="testimonials-track">
+            <div class="testimonial-card">
+                <div class="stars">★★★★★</div>
+                <p>"ClawDesk giúp chúng tôi tiết kiệm 70% thời gian CSKH. AI trả lời cực nhanh và chính xác, khách hàng rất hài lòng!"</p>
+                <div class="testimonial-author">
+                    <div class="testimonial-avatar">N</div>
+                    <div class="testimonial-info">
+                        <h4>Nguyễn Minh</h4>
+                        <p>CEO @ ShopABC</p>
+                    </div>
+                </div>
+            </div>
+            <div class="testimonial-card">
+                <div class="stars">★★★★★</div>
+                <p>"Setup cực dễ, 10 phút là xong. Tích hợp được tất cả kênh chat, giờ không phải lo lỡ tin nhắn nào nữa."</p>
+                <div class="testimonial-author">
+                    <div class="testimonial-avatar">T</div>
+                    <div class="testimonial-info">
+                        <h4>Trần Hà</h4>
+                        <p>Founder @ StartupXYZ</p>
+                    </div>
+                </div>
+            </div>
+            <div class="testimonial-card">
+                <div class="stars">★★★★★</div>
+                <p>"Dùng API key của mình nên yên tâm về chi phí. Không bị markup, không bị khóa tài khoản. Tuyệt vời!"</p>
+                <div class="testimonial-author">
+                    <div class="testimonial-avatar">L</div>
+                    <div class="testimonial-info">
+                        <h4>Lê Phương</h4>
+                        <p>CTO @ TechCorp</p>
+                    </div>
+                </div>
+            </div>
+            <!-- Duplicate for seamless loop -->
+            <div class="testimonial-card">
+                <div class="stars">★★★★★</div>
+                <p>"ClawDesk giúp chúng tôi tiết kiệm 70% thời gian CSKH. AI trả lời cực nhanh và chính xác, khách hàng rất hài lòng!"</p>
+                <div class="testimonial-author">
+                    <div class="testimonial-avatar">N</div>
+                    <div class="testimonial-info">
+                        <h4>Nguyễn Minh</h4>
+                        <p>CEO @ ShopABC</p>
+                    </div>
+                </div>
+            </div>
+            <div class="testimonial-card">
+                <div class="stars">★★★★★</div>
+                <p>"Setup cực dễ, 10 phút là xong. Tích hợp được tất cả kênh chat, giờ không phải lo lỡ tin nhắn nào nữa."</p>
+                <div class="testimonial-author">
+                    <div class="testimonial-avatar">T</div>
+                    <div class="testimonial-info">
+                        <h4>Trần Hà</h4>
+                        <p>Founder @ StartupXYZ</p>
+                    </div>
+                </div>
+            </div>
+            <div class="testimonial-card">
+                <div class="stars">★★★★★</div>
+                <p>"Dùng API key của mình nên yên tâm về chi phí. Không bị markup, không bị khóa tài khoản. Tuyệt vời!"</p>
+                <div class="testimonial-author">
+                    <div class="testimonial-avatar">L</div>
+                    <div class="testimonial-info">
+                        <h4>Lê Phương</h4>
+                        <p>CTO @ TechCorp</p>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </section>
 
 <!-- PRICING -->
 <section class="section" id="pricing">
-    <div class="section-title">
-        <h2>Bảng giá</h2>
+    <div class="section-title reveal">
+        <div class="label">Bảng giá</div>
+        <h2>Chọn gói phù hợp với bạn</h2>
         <p>Bắt đầu miễn phí, nâng cấp khi cần</p>
     </div>
+    <div class="pricing-toggle">
+        <span id="monthlyLabel" class="active">Hàng tháng</span>
+        <div class="toggle-switch" id="pricingToggle" onclick="togglePricing()"></div>
+        <span id="annualLabel">Hàng năm <span style="color:var(--green);font-weight:700;">-20%</span></span>
+    </div>
     <div class="pricing-grid">
-        <div class="price-card">
+        <div class="price-card reveal reveal-stagger">
             <h3>Free</h3>
-            <p style="color:var(--zinc-400);font-size:14px">Dùng thử không giới hạn thời gian</p>
+            <p class="desc">Dùng thử không giới hạn thời gian</p>
             <div class="price">0đ <small>/tháng</small></div>
             <ul class="price-features">
                 <li>1 AI Agent</li>
                 <li>100 tin nhắn/ngày</li>
                 <li>Tất cả kênh chat</li>
                 <li>Knowledge base cơ bản</li>
+                <li>Hỗ trợ cộng đồng</li>
             </ul>
-            <button class="btn btn-ghost" style="width:100%" onclick="openModal('register')">Bắt đầu miễn phí</button>
+            <button class="btn btn-ghost" style="width:100%" onclick="openModal('register')"><span>Bắt đầu miễn phí</span></button>
         </div>
-        <div class="price-card popular">
-            <div class="popular-badge">Phổ biến</div>
+        <div class="price-card popular reveal reveal-stagger">
+            <div class="popular-badge">Phổ biến nhất</div>
             <h3>Pro</h3>
-            <p style="color:var(--zinc-400);font-size:14px">Cho cá nhân & startup</p>
-            <div class="price">200K <small>/tháng</small></div>
+            <p class="desc">Cho cá nhân & startup</p>
+            <div class="price"><span id="proPriceNum">200K</span> <small>/tháng</small></div>
+            <div class="price-annual" id="proAnnual" style="display:none;">Tiết kiệm 480K/năm</div>
             <ul class="price-features">
                 <li>5 AI Agents</li>
                 <li>Không giới hạn tin nhắn</li>
                 <li>Tất cả kênh chat</li>
                 <li>Knowledge base nâng cao</li>
+                <li>Phân tích chi tiết</li>
                 <li>Hỗ trợ ưu tiên</li>
             </ul>
-            <button class="btn btn-primary" style="width:100%" onclick="openModal('register')">Nâng cấp Pro</button>
+            <button class="btn btn-primary" style="width:100%" onclick="openModal('register')"><span>Nâng cấp Pro</span></button>
         </div>
-        <div class="price-card">
+        <div class="price-card reveal reveal-stagger">
             <h3>Business</h3>
-            <p style="color:var(--zinc-400);font-size:14px">Cho doanh nghiệp</p>
-            <div class="price">500K <small>/tháng</small></div>
+            <p class="desc">Cho doanh nghiệp</p>
+            <div class="price"><span id="bizPriceNum">500K</span> <small>/tháng</small></div>
+            <div class="price-annual" id="bizAnnual" style="display:none;">Tiết kiệm 1.2M/năm</div>
             <ul class="price-features">
                 <li>20 AI Agents</li>
                 <li>Không giới hạn tin nhắn</li>
                 <li>Tất cả kênh chat</li>
                 <li>Knowledge base không giới hạn</li>
+                <li>White-label (custom branding)</li>
                 <li>Hỗ trợ ưu tiên 24/7</li>
                 <li>API access đầy đủ</li>
+                <li>Custom integrations</li>
             </ul>
-            <button class="btn btn-ghost" style="width:100%" onclick="openModal('register')">Liên hệ</button>
+            <button class="btn btn-ghost" style="width:100%" onclick="openModal('register')"><span>Liên hệ tư vấn</span></button>
         </div>
     </div>
 </section>
 
+<!-- CTA -->
+<section class="section">
+    <div class="cta-section reveal">
+        <div class="cta-content">
+            <h2>Sẵn sàng tự động hoá CSKH?</h2>
+            <p>Tham gia hàng trăm doanh nghiệp đang sử dụng ClawDesk để nâng cao trải nghiệm khách hàng</p>
+            <button class="btn btn-primary" style="font-size:16px;padding:16px 32px" onclick="openModal('register')"><span>Bắt đầu miễn phí ngay →</span></button>
+        </div>
+    </div>
+</section>
+
+<!-- FOOTER -->
 <footer>
-    <p>© 2026 ClawDesk. Được xây dựng bởi Tôm 🦐</p>
+    <div class="footer-grid">
+        <div class="footer-col">
+            <div class="footer-brand">
+                <div class="logo"><span class="emoji">🤖</span> <span>ClawDesk</span></div>
+                <p>Nền tảng AI Agent CSKH đa kênh. Tự động hoá chăm sóc khách hàng với sức mạnh của AI.</p>
+            </div>
+            <div class="newsletter">
+                <h4>Newsletter</h4>
+                <input type="email" placeholder="email@example.com">
+                <button class="btn btn-primary btn-sm" style="width:100%"><span>Đăng ký</span></button>
+            </div>
+        </div>
+        <div class="footer-col">
+            <h4>Sản phẩm</h4>
+            <ul>
+                <li><a href="#features">Tính năng</a></li>
+                <li><a href="#pricing">Bảng giá</a></li>
+                <li><a href="#how">Cách hoạt động</a></li>
+                <li><a href="#">Tài liệu</a></li>
+            </ul>
+        </div>
+        <div class="footer-col">
+            <h4>Công ty</h4>
+            <ul>
+                <li><a href="#">Về chúng tôi</a></li>
+                <li><a href="#">Blog</a></li>
+                <li><a href="#">Careers</a></li>
+                <li><a href="#">Liên hệ</a></li>
+            </ul>
+        </div>
+        <div class="footer-col">
+            <h4>Hỗ trợ</h4>
+            <ul>
+                <li><a href="#">Trung tâm trợ giúp</a></li>
+                <li><a href="#">Cộng đồng</a></li>
+                <li><a href="#">API Docs</a></li>
+                <li><a href="#">Trạng thái hệ thống</a></li>
+            </ul>
+        </div>
+        <div class="footer-col">
+            <h4>Pháp lý</h4>
+            <ul>
+                <li><a href="#">Điều khoản dịch vụ</a></li>
+                <li><a href="#">Chính sách bảo mật</a></li>
+                <li><a href="#">Cookie Policy</a></li>
+            </ul>
+        </div>
+    </div>
+    <div class="social-links">
+        <a href="#">𝕏</a>
+        <a href="#">f</a>
+        <a href="#">in</a>
+        <a href="#">📧</a>
+    </div>
+    <div class="footer-bottom">
+        <p>© 2026 ClawDesk. All rights reserved. Được xây dựng với ❤️ bởi Tôm 🦐</p>
+    </div>
 </footer>
 
 <!-- AUTH MODAL -->
 <div class="modal-overlay" id="authModal">
     <div class="modal">
-        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <button class="modal-close" onclick="closeModal()">×</button>
         <h2 id="modalTitle">Đăng nhập</h2>
         <p id="modalDesc">Chào mừng trở lại! Đăng nhập để tiếp tục.</p>
 
@@ -311,7 +939,7 @@
                 <input type="password" id="passwordInput" placeholder="Tối thiểu 6 ký tự" required minlength="6">
             </div>
             <div class="form-error" id="formError"></div>
-            <button type="submit" class="btn btn-primary" style="width:100%;margin-top:8px" id="submitBtn">Đăng nhập</button>
+            <button type="submit" class="btn btn-primary" style="width:100%;margin-top:12px" id="submitBtn"><span id="submitBtnText">Đăng nhập</span></button>
         </form>
     </div>
 </div>
@@ -319,15 +947,84 @@
 <script>
 const API = '';
 let authMode = 'login';
+let isAnnual = false;
 
+// Typewriter effect
+const typewriterEl = document.getElementById('typewriter');
+const text = 'Chăm Sóc Khách Hàng';
+let charIndex = 0;
+function typeWriter() {
+    if (charIndex < text.length) {
+        typewriterEl.textContent = text.substring(0, charIndex + 1);
+        charIndex++;
+        setTimeout(typeWriter, 100);
+    }
+}
+setTimeout(typeWriter, 1000);
+
+// Scroll animations
+const revealElements = document.querySelectorAll('.reveal');
+const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            entry.target.classList.add('active');
+        }
+    });
+}, { threshold: 0.1 });
+revealElements.forEach(el => observer.observe(el));
+
+// Nav scroll effect
+window.addEventListener('scroll', () => {
+    const nav = document.getElementById('nav');
+    if (window.scrollY > 50) nav.classList.add('scrolled');
+    else nav.classList.remove('scrolled');
+});
+
+// Mobile nav
+function toggleMobileNav() {
+    document.getElementById('mobileNav').classList.toggle('open');
+}
+
+// Pricing toggle
+function togglePricing() {
+    isAnnual = !isAnnual;
+    const toggle = document.getElementById('pricingToggle');
+    const monthlyLabel = document.getElementById('monthlyLabel');
+    const annualLabel = document.getElementById('annualLabel');
+    const proPriceNum = document.getElementById('proPriceNum');
+    const bizPriceNum = document.getElementById('bizPriceNum');
+    const proAnnual = document.getElementById('proAnnual');
+    const bizAnnual = document.getElementById('bizAnnual');
+    
+    toggle.classList.toggle('active');
+    if (isAnnual) {
+        monthlyLabel.classList.remove('active');
+        annualLabel.classList.add('active');
+        proPriceNum.textContent = '160K';
+        bizPriceNum.textContent = '400K';
+        proAnnual.style.display = 'block';
+        bizAnnual.style.display = 'block';
+    } else {
+        monthlyLabel.classList.add('active');
+        annualLabel.classList.remove('active');
+        proPriceNum.textContent = '200K';
+        bizPriceNum.textContent = '500K';
+        proAnnual.style.display = 'none';
+        bizAnnual.style.display = 'none';
+    }
+}
+
+// Modal
 function openModal(mode) {
     authMode = mode;
     switchTab(mode);
     document.getElementById('authModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
 }
 function closeModal() {
     document.getElementById('authModal').classList.remove('active');
     document.getElementById('formError').style.display = 'none';
+    document.body.style.overflow = '';
 }
 function switchTab(mode) {
     authMode = mode;
@@ -336,7 +1033,7 @@ function switchTab(mode) {
     document.getElementById('nameGroup').style.display = mode === 'register' ? 'block' : 'none';
     document.getElementById('modalTitle').textContent = mode === 'login' ? 'Đăng nhập' : 'Tạo tài khoản';
     document.getElementById('modalDesc').textContent = mode === 'login' ? 'Chào mừng trở lại! Đăng nhập để tiếp tục.' : 'Tạo tài khoản miễn phí để bắt đầu.';
-    document.getElementById('submitBtn').textContent = mode === 'login' ? 'Đăng nhập' : 'Đăng ký';
+    document.getElementById('submitBtnText').textContent = mode === 'login' ? 'Đăng nhập' : 'Đăng ký';
     document.getElementById('formError').style.display = 'none';
 }
 
@@ -345,7 +1042,8 @@ async function handleAuth(e) {
     const errEl = document.getElementById('formError');
     errEl.style.display = 'none';
     const btn = document.getElementById('submitBtn');
-    btn.disabled = true; btn.textContent = 'Đang xử lý...';
+    const btnText = document.getElementById('submitBtnText');
+    btn.disabled = true; btnText.textContent = 'Đang xử lý...';
 
     const body = {
         email: document.getElementById('emailInput').value,
@@ -362,7 +1060,6 @@ async function handleAuth(e) {
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Có lỗi xảy ra');
         
-        // Store Supabase tokens
         localStorage.setItem('access_token', data.access_token);
         localStorage.setItem('refresh_token', data.refresh_token);
         localStorage.setItem('user', JSON.stringify(data.user));
@@ -373,20 +1070,32 @@ async function handleAuth(e) {
         errEl.style.display = 'block';
     } finally {
         btn.disabled = false;
-        btn.textContent = authMode === 'login' ? 'Đăng nhập' : 'Đăng ký';
+        btnText.textContent = authMode === 'login' ? 'Đăng nhập' : 'Đăng ký';
     }
 }
 
-// If already logged in, redirect
+// If already logged in
 if (localStorage.getItem('access_token')) {
-    // verify token
     fetch(`${API}/api/auth/me`, { 
         headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` } 
     }).then(r => { if (r.ok) window.location.href = '/dashboard'; });
 }
 
 // Close modal on overlay click
-document.getElementById('authModal').addEventListener('click', e => { if (e.target === e.currentTarget) closeModal(); });
+document.getElementById('authModal').addEventListener('click', e => { 
+    if (e.target === e.currentTarget) closeModal(); 
+});
+
+// Smooth scroll
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    });
+});
 </script>
 </body>
 </html>
