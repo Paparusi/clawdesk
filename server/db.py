@@ -41,20 +41,24 @@ def get_supabase_anon() -> Client:
 
 
 def verify_jwt(token: str) -> Dict[str, Any]:
-    """Verify JWT token using Supabase auth.get_user()"""
-    import logging
-    logger = logging.getLogger("clawdesk")
+    """Verify JWT token via Supabase REST API (ES256 compatible)"""
+    import httpx as _httpx
     try:
-        sb = get_supabase()
-        user_response = sb.auth.get_user(token)
-        if user_response and user_response.user:
-            return {"sub": str(user_response.user.id), "email": user_response.user.email}
-        logger.error(f"verify_jwt: no user in response")
+        r = _httpx.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers={
+                "apikey": SUPABASE_SERVICE_KEY,
+                "Authorization": f"Bearer {token}",
+            },
+            timeout=10,
+        )
+        if r.status_code == 200:
+            data = r.json()
+            return {"sub": data["id"], "email": data.get("email", "")}
         raise HTTPException(401, "Invalid or expired token")
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"verify_jwt exception: {type(e).__name__}: {e}")
         raise HTTPException(401, f"Token verification failed: {str(e)}")
 
 
