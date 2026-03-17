@@ -361,8 +361,12 @@ async function handleAuth(e) {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Có lỗi xảy ra');
-        localStorage.setItem('token', data.token);
+        
+        // Store Supabase tokens
+        localStorage.setItem('access_token', data.access_token);
+        localStorage.setItem('refresh_token', data.refresh_token);
         localStorage.setItem('user', JSON.stringify(data.user));
+        
         window.location.href = '/dashboard';
     } catch (err) {
         errEl.textContent = err.message;
@@ -374,10 +378,11 @@ async function handleAuth(e) {
 }
 
 // If already logged in, redirect
-if (localStorage.getItem('token')) {
+if (localStorage.getItem('access_token')) {
     // verify token
-    fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } })
-        .then(r => { if (r.ok) window.location.href = '/dashboard'; });
+    fetch(`${API}/api/auth/me`, { 
+        headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` } 
+    }).then(r => { if (r.ok) window.location.href = '/dashboard'; });
 }
 
 // Close modal on overlay click
