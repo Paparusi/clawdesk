@@ -3531,8 +3531,8 @@ async def list_orders(agent_id: str, status: str = None, user=Depends(get_curren
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     query = sb.table("orders").select("*").eq("agent_id", agent_id)
@@ -3551,8 +3551,8 @@ async def create_order(agent_id: str, body: dict = Body(...), user=Depends(get_c
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     # Calculate totals
@@ -3592,8 +3592,8 @@ async def get_order(agent_id: str, order_id: str, user=Depends(get_current_user)
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     result = sb.table("orders").select("*").eq("id", order_id).eq("agent_id", agent_id).execute()
@@ -3610,8 +3610,8 @@ async def update_order(agent_id: str, order_id: str, body: dict = Body(...), use
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     # Recalculate totals if items changed
@@ -3654,8 +3654,8 @@ async def update_order_status(agent_id: str, order_id: str, body: dict = Body(..
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     status = body.get("status")
@@ -3679,8 +3679,8 @@ async def order_stats(agent_id: str, user=Depends(get_current_user)):
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     # Get all orders
@@ -3717,8 +3717,8 @@ async def list_products(agent_id: str, category: str = None, user=Depends(get_cu
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     query = sb.table("products").select("*").eq("agent_id", agent_id)
@@ -3737,8 +3737,8 @@ async def create_product(agent_id: str, body: dict = Body(...), user=Depends(get
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     product_data = {
@@ -3769,8 +3769,8 @@ async def get_product(agent_id: str, product_id: str, user=Depends(get_current_u
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     result = sb.table("products").select("*").eq("id", product_id).eq("agent_id", agent_id).execute()
@@ -3787,8 +3787,8 @@ async def update_product(agent_id: str, product_id: str, body: dict = Body(...),
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     update_data = {}
@@ -3820,8 +3820,8 @@ async def delete_product(agent_id: str, product_id: str, user=Depends(get_curren
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     result = sb.table("products").delete().eq("id", product_id).eq("agent_id", agent_id).execute()
@@ -3835,8 +3835,8 @@ async def search_products(agent_id: str, q: str = Query(...), user=Depends(get_c
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     # Use ILIKE for simple text search
@@ -3855,8 +3855,8 @@ async def list_quick_replies(agent_id: str, user=Depends(get_current_user)):
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     result = sb.table("quick_replies").select("*").eq("agent_id", agent_id).order("use_count", desc=True).execute()
@@ -3870,8 +3870,8 @@ async def create_quick_reply(agent_id: str, body: dict = Body(...), user=Depends
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     reply_data = {
@@ -3894,8 +3894,8 @@ async def update_quick_reply(agent_id: str, reply_id: str, body: dict = Body(...
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     update_data = {}
@@ -3918,8 +3918,8 @@ async def delete_quick_reply(agent_id: str, reply_id: str, user=Depends(get_curr
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     result = sb.table("quick_replies").delete().eq("id", reply_id).eq("agent_id", agent_id).execute()
@@ -3935,8 +3935,8 @@ async def add_customer_tag(agent_id: str, customer_id: str, body: dict = Body(..
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     tag = body.get("tag")
@@ -3967,8 +3967,8 @@ async def remove_customer_tag(agent_id: str, customer_id: str, tag: str, user=De
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     # Get current customer
@@ -3995,8 +3995,8 @@ async def get_customer_segments(agent_id: str, user=Depends(get_current_user)):
     sb = get_supabase()
     
     # Verify agent belongs to user
-    agent = get_agent(sb, agent_id, user["id"])
-    if not agent:
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
         raise HTTPException(404, "Agent not found")
     
     # Get all customers
