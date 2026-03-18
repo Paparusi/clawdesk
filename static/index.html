@@ -840,56 +840,40 @@
         <h2>Chọn gói phù hợp với bạn</h2>
         <p>Bắt đầu miễn phí, nâng cấp khi cần</p>
     </div>
-    <div class="pricing-toggle">
-        <span id="monthlyLabel" class="active">Hàng tháng</span>
-        <div class="toggle-switch" id="pricingToggle" onclick="togglePricing()"></div>
-        <span id="annualLabel">Hàng năm <span style="color:var(--green);font-weight:700;">-20%</span></span>
-    </div>
-    <div class="pricing-grid">
-        <div class="price-card reveal reveal-stagger">
-            <h3>Free</h3>
-            <p class="desc">Dùng thử không giới hạn thời gian</p>
-            <div class="price">0đ <small>/tháng</small></div>
-            <ul class="price-features">
-                <li>1 agent</li>
-                <li>100 tin nhắn/tháng</li>
-                <li>Webchat only</li>
-                <li>Knowledge base cơ bản</li>
-                <li>Hỗ trợ cộng đồng</li>
+    <div class="pricing-grid" style="grid-template-columns: 1fr; max-width: 600px; margin: 0 auto;">
+        <div class="price-card popular reveal" style="text-align:center;">
+            <div class="popular-badge">Đơn giản & minh bạch</div>
+            <h3>Trả theo Agent</h3>
+            <p class="desc">Không plan phức tạp. Chỉ trả tiền cho những gì bạn dùng.</p>
+            <div class="price" style="margin-bottom:8px;">
+                <span style="font-size:18px;color:var(--zinc-400);text-decoration:line-through;margin-right:8px;">Agent đầu tiên</span>
+            </div>
+            <div style="font-size:48px;font-weight:900;color:#34d399;margin-bottom:4px;">MIỄN PHÍ</div>
+            <div style="color:var(--zinc-400);font-size:14px;margin-bottom:24px;">Agent đầu tiên — full tính năng, không giới hạn thời gian</div>
+            
+            <div style="background:var(--zinc-800);border-radius:12px;padding:20px;margin-bottom:24px;border:1px solid var(--zinc-700);">
+                <div style="font-size:14px;color:var(--zinc-400);margin-bottom:8px;">Mỗi agent thêm</div>
+                <div style="font-size:36px;font-weight:900;color:#fff;">100.000đ <small style="font-size:16px;color:var(--zinc-400);font-weight:400;">/agent/tháng</small></div>
+            </div>
+            
+            <ul class="price-features" style="text-align:left;">
+                <li>✅ Full tính năng — không lock gì cả</li>
+                <li>✅ Facebook, Zalo, Telegram, Webchat</li>
+                <li>✅ Auto-reply comment + inbox</li>
+                <li>✅ Quản lý đơn hàng & sản phẩm</li>
+                <li>✅ Broadcast, Automation, Analytics</li>
+                <li>✅ 500 tin nhắn AI / agent / tháng</li>
+                <li>✅ Knowledge base, Quick replies</li>
+                <li>✅ Export CSV, Customer CRM</li>
             </ul>
-            <button class="btn btn-ghost" style="width:100%" onclick="openModal('register')"><span>Bắt đầu miễn phí</span></button>
-        </div>
-        <div class="price-card popular reveal reveal-stagger">
-            <div class="popular-badge">Phổ biến nhất</div>
-            <h3>Pro</h3>
-            <p class="desc">Cho cá nhân & startup</p>
-            <div class="price"><span id="proPriceNum">200K</span> <small>/tháng</small></div>
-            <div class="price-annual" id="proAnnual" style="display:none;">Tiết kiệm 480K/năm</div>
-            <ul class="price-features">
-                <li>5 agents</li>
-                <li>Không giới hạn tin nhắn</li>
-                <li>Tất cả kênh (Messenger, Telegram, Zalo)</li>
-                <li>Quản lý bình luận</li>
-                <li>Tạo & lên lịch bài viết</li>
-                <li>Analytics nâng cao</li>
-            </ul>
-            <button class="btn btn-primary" style="width:100%" onclick="openModal('register')"><span>Nâng cấp Pro</span></button>
-        </div>
-        <div class="price-card reveal reveal-stagger">
-            <h3>Business</h3>
-            <p class="desc">Cho doanh nghiệp</p>
-            <div class="price"><span id="bizPriceNum">500K</span> <small>/tháng</small></div>
-            <div class="price-annual" id="bizAnnual" style="display:none;">Tiết kiệm 1.2M/năm</div>
-            <ul class="price-features">
-                <li>20 agents</li>
-                <li>Không giới hạn tin nhắn</li>
-                <li>Tất cả kênh</li>
-                <li>Broadcast</li>
-                <li>Custom AI</li>
-                <li>API access</li>
-                <li>Hỗ trợ ưu tiên 24/7</li>
-            </ul>
-            <button class="btn btn-ghost" style="width:100%" onclick="openModal('register')"><span>Liên hệ tư vấn</span></button>
+            
+            <div style="display:flex;gap:12px;margin-top:24px;">
+                <button class="btn btn-primary" style="flex:1;font-size:16px;padding:14px" onclick="openModal('register')"><span>Bắt đầu miễn phí →</span></button>
+            </div>
+            
+            <div style="margin-top:20px;color:var(--zinc-500);font-size:13px;">
+                💡 Ví dụ: 1 agent = 0đ · 3 agents = 200k/tháng · 5 agents = 400k/tháng
+            </div>
         </div>
     </div>
 </section>

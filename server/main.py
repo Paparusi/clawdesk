@@ -46,57 +46,51 @@ from server.db import (
 from server.tools import get_tool_definitions, execute_tool
 
 # === PLAN LIMITS CONFIGURATION ===
+# === PRICING MODEL: Per-Agent ===
+# Agent đầu tiên: FREE (full features)
+# Mỗi agent thêm: 100,000 VND/tháng
+# Tất cả agent đều full features, không lock tính năng
+AGENT_PRICE_VND = 100000  # 100k VND per additional agent per month
+FREE_AGENTS = 1  # First agent is free
+
+# Per-agent features (all agents get everything)
+AGENT_FEATURES = {
+    "channels": ["webchat", "facebook", "telegram", "zalo"],
+    "knowledge_items": -1,  # unlimited
+    "products": -1,
+    "automation_rules": -1,
+    "broadcast": True,
+    "export": True,
+    "remove_branding": False,  # free with branding, paid agents no branding
+    "comment_auto_reply": True,
+    "ai_post_generation": -1,
+    "ai_messages_per_agent": 500,  # 500 AI messages per agent per month
+}
+
+# Legacy PLAN_LIMITS for backward compatibility
 PLAN_LIMITS = {
     "free": {
-        "agents": 1,
-        "ai_messages_per_month": 100,
-        "channels": ["webchat"],  # only webchat
-        "knowledge_items": 10,
-        "products": 50,
-        "automation_rules": 2,
+        "agents": FREE_AGENTS,
+        "ai_messages_per_month": AGENT_FEATURES["ai_messages_per_agent"],
+        "channels": AGENT_FEATURES["channels"],
+        "knowledge_items": AGENT_FEATURES["knowledge_items"],
+        "products": AGENT_FEATURES["products"],
+        "automation_rules": AGENT_FEATURES["automation_rules"],
         "staff_accounts": 1,
-        "broadcast": False,
-        "export": False,
+        "broadcast": AGENT_FEATURES["broadcast"],
+        "export": AGENT_FEATURES["export"],
         "remove_branding": False,
-        "ai_post_generation": 0,
-        "comment_auto_reply": False,
+        "ai_post_generation": AGENT_FEATURES["ai_post_generation"],
+        "comment_auto_reply": AGENT_FEATURES["comment_auto_reply"],
     },
-    "pro": {
-        "agents": 3,
-        "ai_messages_per_month": 2000,
-        "channels": ["webchat", "facebook", "telegram", "zalo"],
-        "knowledge_items": 100,
-        "products": 500,
-        "automation_rules": 20,
-        "staff_accounts": 1,
-        "broadcast": False,
-        "export": True,
-        "remove_branding": True,
-        "ai_post_generation": 10,
-        "comment_auto_reply": True,
-    },
-    "business": {
-        "agents": 10,
-        "ai_messages_per_month": 10000,
-        "channels": ["webchat", "facebook", "telegram", "zalo"],
-        "knowledge_items": 500,
-        "products": -1,  # unlimited
-        "automation_rules": -1,  # unlimited
-        "staff_accounts": 3,
-        "broadcast": True,
-        "export": True,
-        "remove_branding": True,
-        "ai_post_generation": 50,
-        "comment_auto_reply": True,
-    },
-    "enterprise": {
-        "agents": -1,
-        "ai_messages_per_month": -1,
-        "channels": ["webchat", "facebook", "telegram", "zalo"],
+    "paid": {
+        "agents": -1,  # unlimited (pay per agent)
+        "ai_messages_per_month": -1,  # scales with agents
+        "channels": AGENT_FEATURES["channels"],
         "knowledge_items": -1,
         "products": -1,
         "automation_rules": -1,
-        "staff_accounts": 10,
+        "staff_accounts": -1,
         "broadcast": True,
         "export": True,
         "remove_branding": True,
@@ -247,35 +241,49 @@ async def me(user=Depends(get_current_user)):
 
 @app.get("/api/user/plan")
 async def get_user_plan(user=Depends(get_current_user)):
-    """Get current plan details and usage"""
-    plan = user.get("plan", "free")
-    usage = get_current_usage(user["id"])
-    limits = PLAN_LIMITS[plan]
-    
-    return {
-        "plan": plan,
-        "limits": limits,
-        "usage": usage,
-        "plan_started_at": user.get("plan_started_at"),
-        "plan_expires_at": user.get("plan_expires_at")
-    }
+    """Get current plan details and usage — per-agent pricing model"""
+    try:
+        sb = get_supabase()
+        usage = get_current_usage(user["id"])
+        
+        # Count agents
+        agents_result = sb.table("agents").select("id", count="exact").eq("user_id", user["id"]).execute()
+        total_agents = agents_result.count or 0
+        
+        free_agents = FREE_AGENTS
+        paid_agents = max(0, total_agents - free_agents)
+        monthly_cost = paid_agents * AGENT_PRICE_VND
+        ai_messages_limit = total_agents * AGENT_FEATURES["ai_messages_per_agent"]
+        
+        return {
+            "pricing": "per_agent",
+            "agent_price_vnd": AGENT_PRICE_VND,
+            "free_agents": free_agents,
+            "total_agents": total_agents,
+            "paid_agents": paid_agents,
+            "monthly_cost_vnd": monthly_cost,
+            "features": AGENT_FEATURES,
+            "usage": {
+                "ai_messages": usage.get("ai_messages", 0),
+                "ai_messages_limit": ai_messages_limit,
+                "broadcast_sent": usage.get("broadcast_sent", 0),
+                "ai_posts_generated": usage.get("ai_posts_generated", 0),
+            },
+            "plan_started_at": user.get("plan_started_at"),
+        }
+    except Exception as e:
+        return {"error": str(e), "pricing": "per_agent", "agent_price_vnd": AGENT_PRICE_VND}
 
 
 @app.post("/api/user/upgrade")
 async def upgrade_plan(body: dict = Body(...), user=Depends(get_current_user)):
-    """Upgrade user plan (placeholder for payment integration)"""
-    new_plan = body.get("plan")
-    if new_plan not in PLAN_LIMITS:
-        raise HTTPException(400, "Invalid plan")
-    
-    # For now, just update the plan (payment integration later)
-    sb = get_supabase()
-    sb.table("profiles").update({
-        "plan": new_plan,
-        "plan_started_at": datetime.now().isoformat()
-    }).eq("id", user["id"]).execute()
-    
-    return {"message": f"Đã nâng cấp lên gói {new_plan}", "plan": new_plan}
+    """Add more agents (placeholder for payment integration)"""
+    # For now, just allow creating agents — payment integration later
+    return {
+        "message": "Hệ thống thanh toán đang được phát triển. Hiện tại bạn có thể tạo agent thoải mái.",
+        "agent_price_vnd": AGENT_PRICE_VND,
+        "note": "Agent đầu tiên miễn phí. Mỗi agent thêm 100.000đ/tháng."
+    }
 
 
 # === AGENT ENDPOINTS ===
