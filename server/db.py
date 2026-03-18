@@ -93,6 +93,60 @@ def get_profile(user_id: str) -> Optional[Dict[str, Any]]:
     return result.data[0] if result.data else None
 
 
+# === CONVERSATION MODE & STATUS OPERATIONS ===
+
+def update_conversation_mode(conv_id: str, mode: str) -> Optional[Dict[str, Any]]:
+    """Update conversation mode (ai/manual/hybrid)"""
+    sb = get_supabase()
+    result = sb.table("conversations").update({"mode": mode}).eq("id", conv_id).execute()
+    return result.data[0] if result.data else None
+
+
+def update_conversation_status(conv_id: str, status: str) -> Optional[Dict[str, Any]]:
+    """Update conversation status (active/waiting/resolved/closed)"""
+    sb = get_supabase()
+    result = sb.table("conversations").update({"status": status}).eq("id", conv_id).execute()
+    return result.data[0] if result.data else None
+
+
+def get_conversation(conv_id: str) -> Optional[Dict[str, Any]]:
+    """Get single conversation by ID"""
+    sb = get_supabase()
+    result = sb.table("conversations").select("*").eq("id", conv_id).execute()
+    return result.data[0] if result.data else None
+
+
+def set_typing_indicator(conv_id: str, is_typing: bool, staff_name: str = "") -> bool:
+    """Set or clear typing indicator for a conversation"""
+    sb = get_supabase()
+    try:
+        sb.table("typing_indicators").upsert({
+            "conversation_id": conv_id,
+            "is_typing": is_typing,
+            "staff_name": staff_name if is_typing else None,
+        }).execute()
+        return True
+    except Exception:
+        return False
+
+
+def get_typing_indicator(conv_id: str) -> Optional[Dict[str, Any]]:
+    """Get typing indicator status"""
+    sb = get_supabase()
+    result = sb.table("typing_indicators").select("*").eq("conversation_id", conv_id).execute()
+    if result.data:
+        indicator = result.data[0]
+        # Clear if older than 10 seconds
+        from datetime import datetime, timedelta
+        if indicator["is_typing"]:
+            updated_at = datetime.fromisoformat(indicator["updated_at"].replace("Z", "+00:00"))
+            if datetime.now(updated_at.tzinfo) - updated_at > timedelta(seconds=10):
+                set_typing_indicator(conv_id, False)
+                return {"is_typing": False, "staff_name": None}
+        return indicator
+    return None
+
+
 # === AGENT OPERATIONS ===
 
 def list_agents(user_id: str) -> List[Dict[str, Any]]:
@@ -269,13 +323,14 @@ def update_conversation_stats(conversation_id: str, message_count: int):
 
 # === MESSAGE OPERATIONS ===
 
-def create_message(conversation_id: str, role: str, content: str) -> Dict[str, Any]:
-    """Create a message in a conversation"""
+def create_message(conversation_id: str, role: str, content: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    """Create a message in a conversation with optional metadata"""
     sb = get_supabase()
     msg_data = {
         "conversation_id": conversation_id,
         "role": role,
         "content": content,
+        "metadata": metadata or {},
     }
     result = sb.table("messages").insert(msg_data).execute()
     return result.data[0] if result.data else None

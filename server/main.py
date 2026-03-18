@@ -31,6 +31,9 @@ from server.db import (
     get_brainstorm_session, create_brainstorm_session, add_brainstorm_message, finalize_brainstorm,
     # Ticket functions
     list_tickets, get_ticket, create_ticket, update_ticket, get_ticket_stats,
+    # Conversation mode & status
+    update_conversation_mode, update_conversation_status, get_conversation,
+    set_typing_indicator, get_typing_indicator,
 )
 
 # Import tool system
@@ -890,6 +893,63 @@ async def run_agent(agent: dict, messages: list, conversation_id: str) -> str:
 
 # === CHAT / MESSAGE HANDLING ===
 
+async def send_channel_message(agent_id: str, conversation: dict, message: str) -> bool:
+    """Send a message to customer via their original channel"""
+    channel = conversation["channel"]
+    sender_id = conversation["sender_id"]
+    
+    ch_config = get_channel(agent_id, channel)
+    if not ch_config:
+        return False
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            if channel == "telegram":
+                bot_token = ch_config.get("config", {}).get("bot_token", "")
+                if not bot_token:
+                    return False
+                resp = await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={"chat_id": sender_id, "text": message},
+                )
+                return resp.json().get("ok", False)
+            
+            elif channel == "facebook":
+                page_token = ch_config.get("config", {}).get("page_token", "")
+                if not page_token:
+                    return False
+                resp = await client.post(
+                    "https://graph.facebook.com/v18.0/me/messages",
+                    params={"access_token": page_token},
+                    json={"recipient": {"id": sender_id}, "message": {"text": message}},
+                )
+                return "message_id" in resp.json()
+            
+            elif channel == "zalo":
+                access_token = ch_config.get("config", {}).get("access_token", "")
+                if not access_token:
+                    return False
+                resp = await client.post(
+                    "https://openapi.zalo.me/v3.0/oa/message/cs",
+                    headers={"access_token": access_token},
+                    json={
+                        "recipient": {"user_id": sender_id},
+                        "message": {"text": message}
+                    },
+                )
+                return resp.json().get("error") == 0
+            
+            elif channel == "webchat":
+                # For webchat, message is stored and widget will poll for it
+                return True
+        
+        return True
+    
+    except Exception as e:
+        print(f"Channel message send error: {e}")
+        return False
+
+
 @app.post("/api/agents/{agent_id}/chat")
 async def chat_with_agent(agent_id: str, body: dict = Body(...)):
     """Public endpoint — receive message from any channel, get AI response"""
@@ -915,25 +975,59 @@ async def chat_with_agent(agent_id: str, body: dict = Body(...)):
         
         conv_id = conversation["id"]
         
+        # Check conversation mode
+        conv_mode = conversation.get("mode", "ai")
+        
         # Add user message
         create_message(conv_id, "user", message)
         
-        # Get recent messages for context
-        recent = get_recent_messages(conv_id, limit=20)
-        chat_messages = [{"role": m["role"], "content": m["content"]} for m in recent]
+        # Only auto-reply if mode is 'ai'
+        if conv_mode == "ai":
+            # Get recent messages for context
+            recent = get_recent_messages(conv_id, limit=20)
+            chat_messages = [{"role": m["role"], "content": m["content"]} for m in recent]
+            
+            # Run agent with RAG + Tools
+            response = await run_agent(agent, chat_messages, conv_id)
+            
+            # Save assistant message (AI-generated)
+            create_message(conv_id, "assistant", response, metadata={"manual": False})
+            
+            # Update stats
+            msg_count = count_conversation_messages(conv_id)
+            update_conversation_stats(conv_id, msg_count)
+            increment_agent_stats(agent_id)
+            
+            return {"response": response, "conversation_id": conv_id}
         
-        # Run agent with RAG + Tools
-        response = await run_agent(agent, chat_messages, conv_id)
+        elif conv_mode == "manual":
+            # Manual mode: no AI response, staff will reply
+            msg_count = count_conversation_messages(conv_id)
+            update_conversation_stats(conv_id, msg_count)
+            return {
+                "response": None,
+                "conversation_id": conv_id,
+                "message": "Tin nhắn đã được gửi. Nhân viên sẽ trả lời sớm.",
+                "mode": "manual"
+            }
         
-        # Save assistant message
-        create_message(conv_id, "assistant", response)
-        
-        # Update stats
-        msg_count = count_conversation_messages(conv_id)
-        update_conversation_stats(conv_id, msg_count)
-        increment_agent_stats(agent_id)
-        
-        return {"response": response, "conversation_id": conv_id}
+        elif conv_mode == "hybrid":
+            # Hybrid mode: generate AI draft but don't send
+            recent = get_recent_messages(conv_id, limit=20)
+            chat_messages = [{"role": m["role"], "content": m["content"]} for m in recent]
+            
+            draft = await run_agent(agent, chat_messages, conv_id)
+            
+            msg_count = count_conversation_messages(conv_id)
+            update_conversation_stats(conv_id, msg_count)
+            
+            return {
+                "response": None,
+                "conversation_id": conv_id,
+                "draft": draft,
+                "mode": "hybrid",
+                "message": "AI đã tạo bản nháp. Nhân viên sẽ xem xét và gửi."
+            }
     
     except HTTPException:
         raise
@@ -968,7 +1062,7 @@ async def get_conversations(agent_id: str, user=Depends(get_current_user)):
 
 
 @app.get("/api/agents/{agent_id}/conversations/{conv_id}")
-async def get_conversation(agent_id: str, conv_id: str, user=Depends(get_current_user)):
+async def get_conversation_messages(agent_id: str, conv_id: str, user=Depends(get_current_user)):
     """Get conversation messages"""
     try:
         agent = get_agent(agent_id)
@@ -984,6 +1078,261 @@ async def get_conversation(agent_id: str, conv_id: str, user=Depends(get_current
         raise
     except Exception as e:
         raise HTTPException(500, f"Failed to get conversation: {str(e)}")
+
+
+# === LIVE CHAT - MANUAL REPLY ===
+
+@app.post("/api/agents/{agent_id}/conversations/{conv_id}/reply")
+async def send_manual_reply(agent_id: str, conv_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Send manual reply from staff to customer"""
+    try:
+        agent = get_agent(agent_id)
+        
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        conversation = get_conversation(conv_id)
+        if not conversation or conversation["agent_id"] != agent_id:
+            raise HTTPException(404, "Conversation not found")
+        
+        message = body.get("message", "").strip()
+        if not message:
+            raise HTTPException(400, "Message required")
+        
+        staff_name = user.get("name", "Staff")
+        
+        # Save manual reply message
+        create_message(
+            conv_id, 
+            "assistant", 
+            message, 
+            metadata={"manual": True, "staff_name": staff_name}
+        )
+        
+        # Send via channel
+        sent = await send_channel_message(agent_id, conversation, message)
+        
+        if not sent:
+            # Still save locally even if send failed
+            pass
+        
+        # Update stats
+        msg_count = count_conversation_messages(conv_id)
+        update_conversation_stats(conv_id, msg_count)
+        
+        # Set status to active if it was waiting
+        if conversation.get("status") == "waiting":
+            update_conversation_status(conv_id, "active")
+        
+        # Clear typing indicator
+        set_typing_indicator(conv_id, False)
+        
+        return {
+            "status": "sent" if sent else "saved_locally",
+            "message": message,
+            "staff_name": staff_name
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to send reply: {str(e)}")
+
+
+@app.put("/api/agents/{agent_id}/conversations/{conv_id}/mode")
+async def change_conversation_mode(agent_id: str, conv_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Toggle conversation mode: ai/manual/hybrid"""
+    try:
+        agent = get_agent(agent_id)
+        
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        conversation = get_conversation(conv_id)
+        if not conversation or conversation["agent_id"] != agent_id:
+            raise HTTPException(404, "Conversation not found")
+        
+        mode = body.get("mode", "ai")
+        if mode not in ["ai", "manual", "hybrid"]:
+            raise HTTPException(400, "Invalid mode. Must be: ai, manual, or hybrid")
+        
+        updated = update_conversation_mode(conv_id, mode)
+        
+        return {"status": "updated", "mode": mode, "conversation": updated}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to update mode: {str(e)}")
+
+
+@app.put("/api/agents/{agent_id}/conversations/{conv_id}/status")
+async def change_conversation_status(agent_id: str, conv_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Update conversation status: active/waiting/resolved/closed"""
+    try:
+        agent = get_agent(agent_id)
+        
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        conversation = get_conversation(conv_id)
+        if not conversation or conversation["agent_id"] != agent_id:
+            raise HTTPException(404, "Conversation not found")
+        
+        status = body.get("status", "active")
+        if status not in ["active", "waiting", "resolved", "closed"]:
+            raise HTTPException(400, "Invalid status")
+        
+        updated = update_conversation_status(conv_id, status)
+        
+        return {"status": "updated", "conversation_status": status, "conversation": updated}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to update status: {str(e)}")
+
+
+@app.post("/api/agents/{agent_id}/conversations/{conv_id}/handback")
+async def handback_to_ai(agent_id: str, conv_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Return conversation to AI after staff resolution"""
+    try:
+        agent = get_agent(agent_id)
+        
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        conversation = get_conversation(conv_id)
+        if not conversation or conversation["agent_id"] != agent_id:
+            raise HTTPException(404, "Conversation not found")
+        
+        context_note = body.get("note", "")
+        
+        # Set mode back to AI
+        update_conversation_mode(conv_id, "ai")
+        update_conversation_status(conv_id, "resolved")
+        
+        # Optionally add context note for AI
+        if context_note:
+            create_message(
+                conv_id,
+                "system",
+                f"[Staff note: {context_note}]",
+                metadata={"type": "handback_note"}
+            )
+        
+        return {"status": "handed_back", "mode": "ai", "conversation_status": "resolved"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to hand back: {str(e)}")
+
+
+# === TEST CHAT ===
+
+@app.post("/api/agents/{agent_id}/test-chat")
+async def test_agent_chat(agent_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Test chat with agent from dashboard (no conversation persistence)"""
+    try:
+        agent = get_agent(agent_id)
+        
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        message = body.get("message", "").strip()
+        history = body.get("history", [])  # [{"role": "user", "content": "..."}, ...]
+        
+        if not message:
+            raise HTTPException(400, "Message required")
+        
+        # Build chat messages
+        chat_messages = history + [{"role": "user", "content": message}]
+        
+        # Run agent (use "test" as conv_id for logging/tools)
+        response = await run_agent(agent, chat_messages, conv_id="test")
+        
+        return {
+            "response": response,
+            "message": message,
+            "test": True
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Test chat error: {str(e)}")
+
+
+# === TYPING INDICATORS ===
+
+@app.post("/api/agents/{agent_id}/conversations/{conv_id}/typing")
+async def set_typing(agent_id: str, conv_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Signal that staff is typing"""
+    try:
+        agent = get_agent(agent_id)
+        
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        is_typing = body.get("is_typing", True)
+        staff_name = user.get("name", "Staff")
+        
+        set_typing_indicator(conv_id, is_typing, staff_name)
+        
+        return {"status": "ok", "is_typing": is_typing}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Failed to set typing: {str(e)}")
+
+
+@app.get("/api/agents/{agent_id}/conversations/{conv_id}/typing")
+async def get_typing(agent_id: str, conv_id: str):
+    """Check if agent/staff is typing (public endpoint for widget)"""
+    try:
+        indicator = get_typing_indicator(conv_id)
+        
+        if indicator and indicator.get("is_typing"):
+            return {
+                "is_typing": True,
+                "staff_name": indicator.get("staff_name", "Agent")
+            }
+        
+        return {"is_typing": False}
+    
+    except Exception as e:
+        return {"is_typing": False}
+
+
+# === WEBCHAT - NEW MESSAGES POLLING ===
+
+@app.get("/api/agents/{agent_id}/conversations/{conv_id}/new-messages")
+async def poll_new_messages(
+    agent_id: str,
+    conv_id: str,
+    after: Optional[str] = Query(None)
+):
+    """Widget polls for new messages (staff replies) - Public endpoint"""
+    try:
+        # Get messages after timestamp
+        sb = get_supabase()
+        query = sb.table("messages").select("*").eq("conversation_id", conv_id).order("created_at", desc=False)
+        
+        if after:
+            query = query.gt("created_at", after)
+        
+        result = query.limit(50).execute()
+        messages = result.data or []
+        
+        # Filter to only assistant messages (replies from staff/AI)
+        new_replies = [m for m in messages if m["role"] == "assistant"]
+        
+        return {"messages": new_replies, "count": len(new_replies)}
+    
+    except Exception as e:
+        raise HTTPException(500, f"Failed to poll messages: {str(e)}")
 
 
 # === TICKETS ===

@@ -628,5 +628,102 @@
         }
     });
 
+    // Poll for new messages (staff replies) every 3 seconds when open
+    let pollInterval;
+    let lastPollTime = new Date().toISOString();
+    let conversationId = null;
+
+    async function pollNewMessages() {
+        if (!isOpen || !conversationId) return;
+        
+        try {
+            const res = await fetch(`${API_BASE}/api/agents/${AGENT_ID}/conversations/${conversationId}/new-messages?after=${encodeURIComponent(lastPollTime)}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.messages && data.messages.length > 0) {
+                    data.messages.forEach(msg => {
+                        if (msg.role === 'assistant' && !messages.some(m => m.timestamp === new Date(msg.created_at).getTime())) {
+                            addMessage('assistant', msg.content, new Date(msg.created_at).getTime());
+                        }
+                    });
+                    lastPollTime = new Date().toISOString();
+                }
+            }
+        } catch(e) {
+            console.error('[ClawDesk] Poll error:', e);
+        }
+    }
+
+    // Start/stop polling
+    function startPolling() {
+        if (!pollInterval) {
+            pollInterval = setInterval(pollNewMessages, 3000);
+        }
+    }
+
+    function stopPolling() {
+        if (pollInterval) {
+            clearInterval(pollInterval);
+            pollInterval = null;
+        }
+    }
+
+    // Update bubble click to start polling
+    const originalBubbleClick = bubble.onclick;
+    bubble.onclick = () => {
+        originalBubbleClick();
+        if (isOpen) {
+            startPolling();
+        } else {
+            stopPolling();
+        }
+    };
+
+    // Extract conversation ID from chat response
+    const originalSendMessage = sendMessage;
+    sendMessage = async function() {
+        const text = inputEl.value.trim();
+        if (!text || lastMessageTime + 1000 > Date.now()) return;
+        
+        lastMessageTime = Date.now();
+        inputEl.value = '';
+        inputEl.style.height = 'auto';
+        addMessage('user', text);
+        sendBtn.disabled = true;
+
+        try {
+            showTyping();
+            const res = await fetch(`${API_BASE}/api/widget/${AGENT_ID}/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: text,
+                    sender_id: senderId,
+                    user_info: userInfo
+                })
+            });
+
+            hideTyping();
+            
+            if (res.ok) {
+                const data = await res.json();
+                if (data.conversation_id) {
+                    conversationId = data.conversation_id;
+                }
+                if (data.reply) {
+                    addMessage('assistant', data.reply);
+                }
+            } else {
+                addMessage('assistant', 'Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại.');
+            }
+        } catch(e) {
+            hideTyping();
+            addMessage('assistant', 'Không thể kết nối. Vui lòng kiểm tra mạng và thử lại.');
+            console.error('[ClawDesk] Send error:', e);
+        } finally {
+            sendBtn.disabled = false;
+        }
+    };
+
     console.log('[ClawDesk] Widget loaded for agent:', AGENT_ID);
 })();

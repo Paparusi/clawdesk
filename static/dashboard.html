@@ -1529,6 +1529,7 @@ async function renderAgent() {
     c.innerHTML = `
         <div class="tabs">
             <div class="tab ${currentTab==='settings'?'active':''}" onclick="switchAgentTab('settings')">⚙️ Cài đặt</div>
+            <div class="tab ${currentTab==='test'?'active':''}" onclick="switchAgentTab('test')">🧪 Test Chat</div>
             <div class="tab ${currentTab==='analytics'?'active':''}" onclick="switchAgentTab('analytics')">📊 Analytics</div>
             <div class="tab ${currentTab==='knowledge'?'active':''}" onclick="switchAgentTab('knowledge')">📚 Kiến thức</div>
             <div class="tab ${currentTab==='tools'?'active':''}" onclick="switchAgentTab('tools')">🔧 Tools</div>
@@ -1555,6 +1556,7 @@ function renderAgentTab() {
     const el = document.getElementById('agentTabContent');
     if (!el) return;
     if (currentTab === 'settings') renderSettingsTab(el);
+    else if (currentTab === 'test') renderTestTab(el);
     else if (currentTab === 'analytics') renderAnalyticsTab(el);
     else if (currentTab === 'knowledge') renderKnowledgeTab(el);
     else if (currentTab === 'tools') renderToolsTab(el);
@@ -1804,6 +1806,133 @@ async function finalizeBrainstorm() {
         
     } catch(e) {
         toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+// TEST CHAT TAB
+let testChatHistory = [];
+
+function renderTestTab(el) {
+    el.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr 400px; gap: 24px; height: 600px;">
+            <!-- Chat Area -->
+            <div style="display: flex; flex-direction: column; gap: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="font-size: 18px; font-weight: 600;">🧪 Test Chat</h3>
+                    <button class="btn btn-ghost btn-sm" onclick="clearTestChat()">🗑️ Xóa lịch sử</button>
+                </div>
+                
+                <div id="testChatMessages" style="flex: 1; overflow-y: auto; padding: 16px; background: var(--bg-base); border-radius: 12px; border: 1px solid var(--border);">
+                    ${testChatHistory.length === 0 ? `
+                        <div style="text-align: center; padding: 48px; color: var(--text-secondary);">
+                            <div style="font-size: 48px; margin-bottom: 16px;">💬</div>
+                            <h4 style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">Bắt đầu test agent</h4>
+                            <p style="font-size: 13px;">Gửi tin nhắn để thử nghiệm AI agent của bạn</p>
+                        </div>
+                    ` : testChatHistory.map(msg => `
+                        <div class="msg ${msg.role}">
+                            ${esc(msg.content)}
+                            <div class="msg-time">${msg.role === 'user' ? '👤 Bạn' : '🤖 Agent'}</div>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div style="display: flex; gap: 12px;">
+                    <textarea id="testChatInput" placeholder="Nhập tin nhắn test..." 
+                        style="flex: 1; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); resize: none; height: 80px; font-family: inherit;"
+                        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendTestMessage()}"></textarea>
+                    <button class="btn btn-primary" onclick="sendTestMessage()" style="align-self: flex-end; height: fit-content;">
+                        📤 Gửi
+                    </button>
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary);">
+                    Enter để gửi • Shift+Enter để xuống dòng
+                </div>
+            </div>
+            
+            <!-- Info Panel -->
+            <div style="background: var(--bg-elevated); border-radius: 12px; padding: 20px; border: 1px solid var(--border); overflow-y: auto;">
+                <h4 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">ℹ️ Thông tin Agent</h4>
+                
+                <div style="margin-bottom: 16px;">
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Provider</div>
+                    <div style="font-size: 14px; font-weight: 500;">${currentAgent.llm_provider || 'OpenAI'}</div>
+                </div>
+                
+                <div style="margin-bottom: 16px;">
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Model</div>
+                    <div style="font-size: 14px; font-weight: 500;">${currentAgent.llm_model || 'gpt-4o-mini'}</div>
+                </div>
+                
+                <div style="margin-bottom: 16px;">
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">System Prompt</div>
+                    <div style="font-size: 12px; padding: 12px; background: var(--bg-input); border-radius: 8px; max-height: 200px; overflow-y: auto; white-space: pre-wrap;">${esc(currentAgent.system_prompt)}</div>
+                </div>
+                
+                <div>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Knowledge Base</div>
+                    <div style="font-size: 14px;">${(currentAgent.knowledge_base || []).length} mục</div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+async function sendTestMessage() {
+    const input = document.getElementById('testChatInput');
+    const message = input.value.trim();
+    
+    if (!message) return;
+    
+    // Add user message to history
+    testChatHistory.push({ role: 'user', content: message });
+    input.value = '';
+    
+    // Re-render
+    renderTestTab(document.getElementById('agentTabContent'));
+    
+    // Scroll to bottom
+    const msgContainer = document.getElementById('testChatMessages');
+    msgContainer.scrollTop = msgContainer.scrollHeight;
+    
+    // Show loading
+    testChatHistory.push({ role: 'assistant', content: '⏳ Đang xử lý...' });
+    renderTestTab(document.getElementById('agentTabContent'));
+    msgContainer.scrollTop = msgContainer.scrollHeight;
+    
+    try {
+        const response = await api(`/api/agents/${currentAgent.id}/test-chat`, {
+            method: 'POST',
+            body: JSON.stringify({ 
+                message,
+                history: testChatHistory.filter((m, i) => i < testChatHistory.length - 1) // Exclude loading message
+            })
+        });
+        
+        // Replace loading with actual response
+        testChatHistory[testChatHistory.length - 1] = { 
+            role: 'assistant', 
+            content: response.response 
+        };
+        
+        renderTestTab(document.getElementById('agentTabContent'));
+        msgContainer.scrollTop = msgContainer.scrollHeight;
+        
+    } catch(e) {
+        testChatHistory[testChatHistory.length - 1] = { 
+            role: 'assistant', 
+            content: `❌ Lỗi: ${e.message}` 
+        };
+        renderTestTab(document.getElementById('agentTabContent'));
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+function clearTestChat() {
+    if (confirm('Xóa toàn bộ lịch sử test chat?')) {
+        testChatHistory = [];
+        renderTestTab(document.getElementById('agentTabContent'));
+        toast('Đã xóa lịch sử', '🗑️');
     }
 }
 
@@ -2391,25 +2520,193 @@ async function renderConvosTab(el) {
     }
 }
 
+// Store current conversation data for access
+let currentConv = null;
+
 async function openConvo(agentId, convId) {
     const el = document.getElementById('agentTabContent');
     el.innerHTML = '<div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>';
     try {
         const data = await api(`/api/agents/${agentId}/conversations/${convId}`);
         const msgs = data.messages || [];
+        
+        // Get conversation metadata
+        const convResp = await api(`/api/agents/${agentId}/conversations`);
+        const conversation = (convResp.conversations || []).find(c => c.id === convId);
+        currentConv = conversation;
+        
+        const mode = conversation?.mode || 'ai';
+        const status = conversation?.status || 'active';
+        
         el.innerHTML = `
-            <button class="btn btn-ghost btn-sm" onclick="renderConvosTab(document.getElementById('agentTabContent'))" style="margin-bottom:20px">← Quay lại</button>
-            <div class="messages-body">
-                ${msgs.length === 0 ? '<div style="text-align:center;color:var(--text-secondary)">Chưa có tin nhắn nào</div>' : msgs.map(m => `
-                    <div class="msg ${m.role}">
-                        ${esc(m.content)}
-                        <div class="msg-time">${new Date(m.timestamp).toLocaleString('vi')}</div>
+            <div style="margin-bottom: 20px;">
+                <button class="btn btn-ghost btn-sm" onclick="renderConvosTab(document.getElementById('agentTabContent'))">← Quay lại</button>
+                
+                <div style="margin-top: 16px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+                    <div>
+                        <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 4px;">${esc(conversation?.sender_name || conversation?.sender_id || 'Unknown')}</h3>
+                        <div style="font-size: 13px; color: var(--text-secondary);">${channelIcon(conversation?.channel || 'webchat')} ${conversation?.channel || 'webchat'}</div>
                     </div>
-                `).join('')}
+                    
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <select id="convMode" style="padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-input); color: var(--text-primary); font-size: 13px;" onchange="changeConvMode('${agentId}', '${convId}', this.value)">
+                            <option value="ai" ${mode === 'ai' ? 'selected' : ''}>🤖 AI Auto</option>
+                            <option value="manual" ${mode === 'manual' ? 'selected' : ''}>👤 Manual</option>
+                            <option value="hybrid" ${mode === 'hybrid' ? 'selected' : ''}>🔀 Hybrid</option>
+                        </select>
+                        
+                        <select id="convStatus" style="padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-input); color: var(--text-primary); font-size: 13px;" onchange="changeConvStatus('${agentId}', '${convId}', this.value)">
+                            <option value="active" ${status === 'active' ? 'selected' : ''}>🟢 Active</option>
+                            <option value="waiting" ${status === 'waiting' ? 'selected' : ''}>🟡 Waiting</option>
+                            <option value="resolved" ${status === 'resolved' ? 'selected' : ''}>✅ Resolved</option>
+                            <option value="closed" ${status === 'closed' ? 'selected' : ''}>⬜ Closed</option>
+                        </select>
+                        
+                        ${mode === 'manual' || status === 'waiting' ? `
+                            <button class="btn btn-sm btn-primary" onclick="handbackToAI('${agentId}', '${convId}')" title="Chuyển lại cho AI">🤖 Handback</button>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="messages-body" id="messagesBody" style="max-height: 500px; overflow-y: auto; margin-bottom: 16px; padding: 16px; background: var(--bg-base); border-radius: 12px;">
+                ${msgs.length === 0 ? '<div style="text-align:center;color:var(--text-secondary)">Chưa có tin nhắn nào</div>' : msgs.map(m => {
+                    const isManual = m.metadata?.manual === true;
+                    const staffName = m.metadata?.staff_name || '';
+                    return `
+                        <div class="msg ${m.role}">
+                            ${esc(m.content)}
+                            <div class="msg-time">
+                                ${m.role === 'assistant' ? (isManual ? '👤 ' + staffName : '🤖 AI') : ''} ${m.role === 'assistant' ? '·' : ''}
+                                ${new Date(m.created_at).toLocaleString('vi')}
+                            </div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+            
+            <div style="background: var(--bg-elevated); padding: 16px; border-radius: 12px; border: 1px solid var(--border);">
+                <div style="display: flex; gap: 12px;">
+                    <textarea id="replyInput" placeholder="${mode === 'ai' ? 'AI đang tự động trả lời...' : 'Nhập tin nhắn...'}" 
+                        style="flex: 1; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); resize: vertical; min-height: 80px; font-family: inherit;"
+                        ${mode === 'ai' ? 'disabled' : ''}
+                        onkeydown="if(event.key==='Enter'&&event.ctrlKey){sendManualReply('${agentId}', '${convId}')}"
+                        oninput="signalTyping('${agentId}', '${convId}', true)"></textarea>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        <button class="btn btn-primary" onclick="sendManualReply('${agentId}', '${convId}')" ${mode === 'ai' ? 'disabled' : ''} title="Ctrl+Enter">
+                            📤 Gửi
+                        </button>
+                    </div>
+                </div>
+                <div style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
+                    ${mode === 'ai' ? '💡 Chuyển sang Manual hoặc Hybrid để trả lời thủ công' : 'Ctrl+Enter để gửi nhanh'}
+                </div>
             </div>
         `;
+        
+        setTimeout(() => {
+            const msgBody = document.getElementById('messagesBody');
+            if (msgBody) msgBody.scrollTop = msgBody.scrollHeight;
+        }, 100);
+        
     } catch(e) {
         toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function sendManualReply(agentId, convId) {
+    const input = document.getElementById('replyInput');
+    const message = input.value.trim();
+    
+    if (!message) {
+        toast('Vui lòng nhập tin nhắn', '⚠️');
+        return;
+    }
+    
+    try {
+        signalTyping(agentId, convId, false);
+        
+        await api(`/api/agents/${agentId}/conversations/${convId}/reply`, {
+            method: 'POST',
+            body: JSON.stringify({ message })
+        });
+        
+        input.value = '';
+        toast('Đã gửi!', '✅');
+        
+        setTimeout(() => openConvo(agentId, convId), 500);
+        
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function changeConvMode(agentId, convId, mode) {
+    try {
+        await api(`/api/agents/${agentId}/conversations/${convId}/mode`, {
+            method: 'PUT',
+            body: JSON.stringify({ mode })
+        });
+        
+        toast(`Đã chuyển sang ${mode === 'ai' ? 'AI Auto' : mode === 'manual' ? 'Manual' : 'Hybrid'}`, '✅');
+        setTimeout(() => openConvo(agentId, convId), 300);
+        
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function changeConvStatus(agentId, convId, status) {
+    try {
+        await api(`/api/agents/${agentId}/conversations/${convId}/status`, {
+            method: 'PUT',
+            body: JSON.stringify({ status })
+        });
+        
+        toast(`Trạng thái: ${status}`, '✅');
+        
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function handbackToAI(agentId, convId) {
+    const note = prompt('Ghi chú cho AI (tùy chọn):');
+    
+    try {
+        await api(`/api/agents/${agentId}/conversations/${convId}/handback`, {
+            method: 'POST',
+            body: JSON.stringify({ note: note || '' })
+        });
+        
+        toast('Đã chuyển lại cho AI!', '🤖');
+        setTimeout(() => openConvo(agentId, convId), 500);
+        
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+let typingTimeout;
+async function signalTyping(agentId, convId, isTyping) {
+    if (typingTimeout) clearTimeout(typingTimeout);
+    
+    if (isTyping) {
+        typingTimeout = setTimeout(async () => {
+            try {
+                await api(`/api/agents/${agentId}/conversations/${convId}/typing`, {
+                    method: 'POST',
+                    body: JSON.stringify({ is_typing: true })
+                });
+            } catch(e) {}
+        }, 500);
+    } else {
+        try {
+            await api(`/api/agents/${agentId}/conversations/${convId}/typing`, {
+                method: 'POST',
+                body: JSON.stringify({ is_typing: false })
+            });
+        } catch(e) {}
     }
 }
 
