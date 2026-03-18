@@ -3624,26 +3624,39 @@ function closeCreateAgent() {
 }
 
 async function createAgent() {
-    const name = document.getElementById('newAgentName').value;
+    console.log('createAgent called');
+    const nameEl = document.getElementById('newAgentName');
+    const descEl = document.getElementById('newAgentDesc');
+    const promptEl = document.getElementById('newAgentPrompt');
+    console.log('Elements:', nameEl, descEl, promptEl);
+    
+    const name = nameEl ? nameEl.value : '';
     if (!name) {
         toast('Vui lòng nhập tên agent', '⚠️');
         return;
     }
     try {
+        console.log('Creating agent:', name);
         const res = await api('/api/agents', {
             method: 'POST',
             body: JSON.stringify({
                 name,
-                description: document.getElementById('newAgentDesc').value,
-                system_prompt: document.getElementById('newAgentPrompt').value,
+                description: descEl ? descEl.value : '',
+                system_prompt: promptEl ? promptEl.value : 'Bạn là trợ lý AI chăm sóc khách hàng.',
             }),
         });
-        toast('Đã tạo agent!', '🎉');
-        closeCreateAgent();
-        await loadAgents();
-        selectAgent(res.id);
+        console.log('Create result:', res);
+        if (res && res.id) {
+            toast('Đã tạo agent!', '🎉');
+            closeCreateAgent();
+            await loadAgents();
+            selectAgent(res.id);
+        } else {
+            toast('Không thể tạo agent. Thử lại.', '❌');
+        }
     } catch(e) {
-        toast('Lỗi: ' + e.message, '❌');
+        console.error('Create agent error:', e);
+        toast('Lỗi: ' + (e.message || 'Unknown error'), '❌');
     }
 }
 
@@ -4710,9 +4723,13 @@ let agentTemplates = [];
 
 async function loadTemplates() {
     try {
-        const data = await api('/api/templates');
+        // Templates endpoint doesn't need auth - use direct fetch
+        const res = await fetch(`${API}/api/templates`);
+        const data = await res.json();
         agentTemplates = data.templates || [];
+        console.log('Templates loaded:', agentTemplates.length);
     } catch(e) {
+        console.error('Failed to load templates:', e);
         agentTemplates = [];
     }
 }
