@@ -615,7 +615,61 @@
         </div>
         <div class="hero-mockup">
             <div class="mockup-card">
-                <div style="aspect-ratio:16/9;background:linear-gradient(135deg,var(--zinc-800),var(--zinc-900));border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--zinc-600);font-size:48px;">📊</div>
+                <div style="aspect-ratio:16/9;background:var(--zinc-900);border-radius:12px;overflow:hidden;border:1px solid var(--zinc-700);position:relative;">
+                    <!-- Fake dashboard preview -->
+                    <div style="display:flex;height:100%;">
+                        <!-- Sidebar -->
+                        <div style="width:200px;background:var(--zinc-800);border-right:1px solid var(--zinc-700);padding:16px;flex-shrink:0;">
+                            <div style="display:flex;align-items:center;gap:8px;margin-bottom:24px;">
+                                <div style="width:28px;height:28px;background:var(--accent);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:14px;">🤖</div>
+                                <span style="color:#fff;font-weight:700;font-size:13px;">ClawDesk</span>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:4px;">
+                                <div style="padding:8px 10px;background:rgba(129,140,248,.15);border-radius:8px;color:var(--accent-light);font-size:11px;">📊 Tổng quan</div>
+                                <div style="padding:8px 10px;border-radius:8px;color:var(--zinc-400);font-size:11px;">💬 Hội thoại</div>
+                                <div style="padding:8px 10px;border-radius:8px;color:var(--zinc-400);font-size:11px;">📝 Bình luận</div>
+                                <div style="padding:8px 10px;border-radius:8px;color:var(--zinc-400);font-size:11px;">📄 Bài viết</div>
+                                <div style="padding:8px 10px;border-radius:8px;color:var(--zinc-400);font-size:11px;">📢 Broadcast</div>
+                            </div>
+                        </div>
+                        <!-- Main content -->
+                        <div style="flex:1;padding:20px;">
+                            <div style="color:#fff;font-weight:700;font-size:15px;margin-bottom:16px;">📊 Tổng quan</div>
+                            <!-- Stats cards -->
+                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px;">
+                                <div style="background:var(--zinc-800);border:1px solid var(--zinc-700);border-radius:10px;padding:12px;">
+                                    <div style="color:var(--zinc-400);font-size:10px;">💬 Tin nhắn</div>
+                                    <div style="color:#fff;font-size:20px;font-weight:800;margin-top:4px;">1,247</div>
+                                    <div style="color:#34d399;font-size:9px;margin-top:2px;">↑ 23%</div>
+                                </div>
+                                <div style="background:var(--zinc-800);border:1px solid var(--zinc-700);border-radius:10px;padding:12px;">
+                                    <div style="color:var(--zinc-400);font-size:10px;">📝 Comment</div>
+                                    <div style="color:#fff;font-size:20px;font-weight:800;margin-top:4px;">389</div>
+                                    <div style="color:#34d399;font-size:9px;margin-top:2px;">↑ 18%</div>
+                                </div>
+                                <div style="background:var(--zinc-800);border:1px solid var(--zinc-700);border-radius:10px;padding:12px;">
+                                    <div style="color:var(--zinc-400);font-size:10px;">🎫 Tickets</div>
+                                    <div style="color:#fff;font-size:20px;font-weight:800;margin-top:4px;">12</div>
+                                    <div style="color:#fb923c;font-size:9px;margin-top:2px;">3 mới</div>
+                                </div>
+                                <div style="background:var(--zinc-800);border:1px solid var(--zinc-700);border-radius:10px;padding:12px;">
+                                    <div style="color:var(--zinc-400);font-size:10px;">👥 Khách hàng</div>
+                                    <div style="color:#fff;font-size:20px;font-weight:800;margin-top:4px;">856</div>
+                                    <div style="color:#34d399;font-size:9px;margin-top:2px;">↑ 12%</div>
+                                </div>
+                            </div>
+                            <!-- Activity feed -->
+                            <div style="background:var(--zinc-800);border:1px solid var(--zinc-700);border-radius:10px;padding:12px;">
+                                <div style="color:var(--zinc-300);font-size:11px;font-weight:600;margin-bottom:10px;">🕐 Hoạt động gần đây</div>
+                                <div style="display:flex;flex-direction:column;gap:8px;">
+                                    <div style="display:flex;align-items:center;gap:8px;"><div style="width:6px;height:6px;background:#34d399;border-radius:50%;"></div><span style="color:var(--zinc-300);font-size:10px;">AI trả lời comment "giá bao nhiêu?" — 2 phút trước</span></div>
+                                    <div style="display:flex;align-items:center;gap:8px;"><div style="width:6px;height:6px;background:var(--accent);border-radius:50%;"></div><span style="color:var(--zinc-300);font-size:10px;">Khách Nguyễn Văn A nhắn tin qua Messenger — 5 phút trước</span></div>
+                                    <div style="display:flex;align-items:center;gap:8px;"><div style="width:6px;height:6px;background:#fb923c;border-radius:50%;"></div><span style="color:var(--zinc-300);font-size:10px;">Ticket #47 được tạo — Hỏi về vận chuyển — 12 phút trước</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
