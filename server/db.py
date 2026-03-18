@@ -973,7 +973,7 @@ def get_conversations_for_export(agent_id: str) -> List[Dict[str, Any]]:
     """Get all conversations with summary data for CSV export"""
     sb = get_supabase()
     
-    conversations = list_conversations(agent_id, limit=10000)
+    conversations = list_conversations(agent_id)
     
     export_data = []
     for conv in conversations:

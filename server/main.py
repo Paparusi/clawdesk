@@ -3689,7 +3689,7 @@ async def order_stats(agent_id: str, user=Depends(get_current_user)):
     
     # Calculate stats
     total_orders = len(orders)
-    total_revenue = sum(order.get("total", 0) for order in orders)
+    total_revenue = sum(int(order.get("total", 0) or 0) for order in orders)
     
     by_status = {}
     by_payment = {}
