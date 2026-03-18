@@ -3608,8 +3608,8 @@ async function renderAllConversations() {
 }
 
 // CREATE AGENT
-function openCreateAgent() {
-    if (agentTemplates.length > 0) {
+function openCreateAgent(skipTemplates = false) {
+    if (!skipTemplates && agentTemplates.length > 0) {
         showTemplateGallery();
     } else {
         document.getElementById('createModal').classList.add('active');
@@ -4742,7 +4742,7 @@ function selectTemplate(templateId) {
     closeTemplateGallery();
     
     if (templateId === 'custom') {
-        openCreateAgent();
+        openCreateAgent(true);
         return;
     }
     
@@ -4753,7 +4753,7 @@ function selectTemplate(templateId) {
     document.getElementById('newAgentDesc').value = template.description;
     document.getElementById('newAgentPrompt').value = template.system_prompt;
     
-    openCreateAgent();
+    openCreateAgent(true);
 }
 
 // SEARCH
