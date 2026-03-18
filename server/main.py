@@ -2971,9 +2971,9 @@ async def generate_post_content(
 @app.post("/api/agents/{agent_id}/broadcast")
 async def send_broadcast(
     agent_id: str,
+    background_tasks: BackgroundTasks,
     body: dict = Body(...),
     user=Depends(get_current_user),
-    background_tasks: BackgroundTasks
 ):
     """Send message to multiple customers"""
     try:
