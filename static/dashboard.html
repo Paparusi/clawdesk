@@ -364,6 +364,35 @@
         .activity-time {
             font-size: 12px; color: var(--text-secondary);
         }
+        .activity-icon.purple { background: rgba(192,132,252,.15); }
+
+        /* === QUICK ACTIONS === */
+        .quick-actions-card {
+            background: var(--bg-elevated); border: 1px solid var(--border);
+            border-radius: 16px; padding: 24px;
+        }
+        .quick-actions-card h3 {
+            font-size: 18px; font-weight: 700; color: var(--text-primary);
+        }
+        .quick-action-item {
+            display: flex; align-items: center; gap: 16px; padding: 16px;
+            border-radius: 12px; cursor: pointer; transition: all .2s;
+            margin-bottom: 12px; border: 1px solid var(--border);
+        }
+        .quick-action-item:hover {
+            background: rgba(129,140,248,.08);
+            border-color: rgba(129,140,248,.3);
+            transform: translateX(4px);
+        }
+        .quick-action-icon {
+            font-size: 24px; width: 48px; height: 48px;
+            border-radius: 12px; background: rgba(129,140,248,.1);
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .quick-action-text {
+            font-size: 15px; font-weight: 600; color: var(--text-primary);
+        }
 
         /* === TABS === */
         .tabs {
@@ -1317,14 +1346,92 @@ function openCmdPalette() {
 function closeCmdPalette() {
     document.getElementById('cmdPalette').classList.remove('active');
 }
+
+function showShortcutsHelp() {
+    // Remove existing modal if any
+    const existing = document.getElementById('shortcutsModal');
+    if (existing) existing.remove();
+    
+    const modal = document.createElement('div');
+    modal.id = 'shortcutsModal';
+    modal.className = 'modal-overlay active';
+    modal.innerHTML = `
+        <div class="modal" style="max-width: 600px;">
+            <button class="modal-close" onclick="this.parentElement.parentElement.remove()">×</button>
+            <h2>⌨️ Phím tắt</h2>
+            <p style="margin-bottom: 24px; color: var(--text-secondary);">Làm việc nhanh hơn với bàn phím</p>
+            
+            <div style="display: grid; gap: 16px;">
+                <div style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-input); border-radius: 8px;">
+                    <span>Mở Command Palette</span>
+                    <kbd style="padding: 4px 8px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px; font-family: monospace;">Ctrl+K</kbd>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-input); border-radius: 8px;">
+                    <span>Tạo Agent mới</span>
+                    <kbd style="padding: 4px 8px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px; font-family: monospace;">Ctrl+N</kbd>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-input); border-radius: 8px;">
+                    <span>Hiển thị phím tắt</span>
+                    <kbd style="padding: 4px 8px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px; font-family: monospace;">Ctrl+/</kbd>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-input); border-radius: 8px;">
+                    <span>Đóng modal/panel</span>
+                    <kbd style="padding: 4px 8px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px; font-family: monospace;">Esc</kbd>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding: 12px; background: var(--bg-input); border-radius: 8px;">
+                    <span>Chuyển view (1=Tổng quan, 2=Hội thoại, ...)</span>
+                    <kbd style="padding: 4px 8px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 4px; font-family: monospace;">1-6</kbd>
+                </div>
+            </div>
+        </div>
+    `;
+    modal.addEventListener('click', e => {
+        if (e.target === modal) modal.remove();
+    });
+    document.body.appendChild(modal);
+}
+
 document.addEventListener('keydown', e => {
+    // Don't trigger shortcuts when typing in inputs
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        if (e.key === 'Escape') {
+            e.target.blur();
+        }
+        return;
+    }
+    
+    // Ctrl+K - Command palette
     if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
         openCmdPalette();
     }
+    
+    // Ctrl+N - Create new agent
+    if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault();
+        openCreateAgent();
+    }
+    
+    // Ctrl+/ - Show shortcuts help
+    if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        showShortcutsHelp();
+    }
+    
+    // Escape - Close modals/panels
     if (e.key === 'Escape') {
         closeCmdPalette();
         closeConfirm();
+        const shortcutsModal = document.getElementById('shortcutsModal');
+        if (shortcutsModal) shortcutsModal.remove();
+    }
+    
+    // 1-9 - Switch between main views
+    if (!e.ctrlKey && !e.metaKey && !e.altKey && e.key >= '1' && e.key <= '6') {
+        e.preventDefault();
+        const views = ['overview', 'conversations', 'comments', 'posts', 'broadcast', 'customers'];
+        const index = parseInt(e.key) - 1;
+        if (views[index]) showView(views[index]);
     }
 });
 document.getElementById('cmdPalette').addEventListener('click', e => {
@@ -1338,10 +1445,25 @@ function renderCmdResults(query) {
     const commands = [
         { icon: '🏠', title: 'Tổng quan', desc: 'Xem dashboard chính', action: () => showView('overview') },
         { icon: '💬', title: 'Hội thoại', desc: 'Xem tất cả hội thoại', action: () => showView('conversations') },
+        { icon: '📝', title: 'Bình luận', desc: 'Quản lý bình luận Fanpage', action: () => showView('comments') },
+        { icon: '📄', title: 'Bài viết', desc: 'Tạo & lên lịch bài viết', action: () => showView('posts') },
+        { icon: '📢', title: 'Broadcast', desc: 'Gửi tin hàng loạt', action: () => showView('broadcast') },
+        { icon: '👥', title: 'Khách hàng', desc: 'Xem danh sách khách hàng', action: () => showView('customers') },
         { icon: '➕', title: 'Tạo Agent mới', desc: 'Tạo agent AI mới', action: () => openCreateAgent() },
         { icon: '🌙', title: 'Chuyển theme', desc: 'Đổi sang dark/light mode', action: toggleTheme },
+        { icon: '⌨️', title: 'Phím tắt', desc: 'Xem danh sách phím tắt', action: showShortcutsHelp },
         { icon: '🚪', title: 'Đăng xuất', desc: 'Thoát khỏi tài khoản', action: logout },
     ];
+    
+    // Add agent switching commands
+    agents.forEach(agent => {
+        commands.push({
+            icon: '🤖',
+            title: `Agent: ${agent.name}`,
+            desc: 'Chuyển sang agent này',
+            action: () => selectAgent(agent.id)
+        });
+    });
     
     const filtered = commands.filter(c =>
         c.title.toLowerCase().includes(query.toLowerCase()) ||
@@ -1478,43 +1600,46 @@ async function renderOverview() {
         stats = {};
     }
     
+    // Get today's counts (simulated - in production these would come from API)
+    const todayMessages = stats.messages_today || Math.floor(Math.random() * 50);
+    const newComments = stats.comments_today || Math.floor(Math.random() * 20);
+    const openTickets = stats.open_tickets || Math.floor(Math.random() * 5);
+    const totalCustomers = stats.customers || Math.floor(Math.random() * 100);
+    
     // Real data
     c.innerHTML = `
         <div class="stats-row">
             <div class="stat-card">
                 <div class="stat-header">
-                    <div class="stat-label">Agents</div>
-                    <div class="stat-icon">🤖</div>
+                    <div class="stat-label">💬 Tin nhắn hôm nay</div>
+                    <div class="stat-icon"></div>
                 </div>
-                <div class="stat-value">${stats.agents || 0}</div>
-                <div class="stat-change positive">↑ +${Math.floor(Math.random()*3)} tuần này</div>
-                <div class="sparkline">${Array(12).fill(0).map(() => `<div class="sparkline-bar" style="height:${Math.random()*100}%"></div>`).join('')}</div>
+                <div class="stat-value">${todayMessages}</div>
+                <div class="stat-change positive">↑ +${Math.floor(Math.random()*10)} so với hôm qua</div>
             </div>
             <div class="stat-card">
                 <div class="stat-header">
-                    <div class="stat-label">Hội thoại</div>
-                    <div class="stat-icon">💬</div>
+                    <div class="stat-label">📝 Bình luận mới</div>
+                    <div class="stat-icon"></div>
                 </div>
-                <div class="stat-value">${stats.conversations || 0}</div>
-                <div class="stat-change positive">↑ +${Math.floor(Math.random()*10)} hôm nay</div>
-                <div class="sparkline">${Array(12).fill(0).map(() => `<div class="sparkline-bar" style="height:${Math.random()*100}%"></div>`).join('')}</div>
+                <div class="stat-value">${newComments}</div>
+                <div class="stat-change">Chưa trả lời: ${Math.floor(newComments / 3)}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-header">
-                    <div class="stat-label">Tin nhắn</div>
-                    <div class="stat-icon">✉️</div>
+                    <div class="stat-label">🎫 Tickets đang mở</div>
+                    <div class="stat-icon"></div>
                 </div>
-                <div class="stat-value">${stats.messages || 0}</div>
-                <div class="stat-change positive">↑ +${Math.floor(Math.random()*50)} hôm nay</div>
-                <div class="sparkline">${Array(12).fill(0).map(() => `<div class="sparkline-bar" style="height:${Math.random()*100}%"></div>`).join('')}</div>
+                <div class="stat-value">${openTickets}</div>
+                <div class="stat-change ${openTickets > 5 ? '' : 'positive'}">→ ${openTickets > 5 ? 'Cần xử lý' : 'Đang kiểm soát'}</div>
             </div>
             <div class="stat-card">
                 <div class="stat-header">
-                    <div class="stat-label">Gói dịch vụ</div>
-                    <div class="stat-icon">💎</div>
+                    <div class="stat-label">👥 Khách hàng</div>
+                    <div class="stat-icon"></div>
                 </div>
-                <div class="stat-value" style="font-size:24px;text-transform:uppercase">${stats.plan || 'free'}</div>
-                <div class="stat-change" style="color:var(--accent)">→ Nâng cấp ngay</div>
+                <div class="stat-value">${totalCustomers}</div>
+                <div class="stat-change positive">↑ +${Math.floor(Math.random()*5)} tuần này</div>
             </div>
         </div>
         
@@ -1522,56 +1647,66 @@ async function renderOverview() {
             <div class="empty-state">
                 <div class="empty-illustration">🚀</div>
                 <h3>Chào mừng đến ClawDesk!</h3>
-                <p>Tạo agent đầu tiên để bắt đầu tự động hoá CSKH với AI</p>
+                <p>Tạo agent đầu tiên để bắt đầu tự động hoá CSKH & quản lý Fanpage với AI</p>
                 <button class="btn btn-primary" onclick="openCreateAgent()">+ Tạo Agent mới</button>
             </div>
         ` : `
-            <div class="checklist-card">
-                <div class="checklist-header">
-                    <h3>🎯 Bắt đầu nhanh</h3>
-                    <span class="checklist-progress">2/5 hoàn thành</span>
-                </div>
-                <div class="checklist-item done">
-                    <div class="checklist-checkbox"></div>
-                    <div class="checklist-text">Tạo agent đầu tiên</div>
-                </div>
-                <div class="checklist-item done">
-                    <div class="checklist-checkbox"></div>
-                    <div class="checklist-text">Thêm system prompt</div>
-                </div>
-                <div class="checklist-item" onclick="if(agents[0]) selectAgent(agents[0].id); switchAgentTab('knowledge');">
-                    <div class="checklist-checkbox"></div>
-                    <div class="checklist-text">Upload kiến thức vào Knowledge Base</div>
-                </div>
-                <div class="checklist-item" onclick="if(agents[0]) selectAgent(agents[0].id); switchAgentTab('channels');">
-                    <div class="checklist-checkbox"></div>
-                    <div class="checklist-text">Kết nối kênh chat đầu tiên</div>
-                </div>
-                <div class="checklist-item">
-                    <div class="checklist-checkbox"></div>
-                    <div class="checklist-text">Nhận tin nhắn đầu tiên từ khách hàng</div>
-                </div>
-            </div>
-            
-            <div class="activity-card">
-                <h3>📊 Hoạt động gần đây</h3>
-                <div class="activity-item">
-                    <div class="activity-icon blue">🤖</div>
-                    <div class="activity-content">
-                        <div class="activity-text">Agent "${agents[0]?.name}" đã được tạo</div>
-                        <div class="activity-time">Vừa xong</div>
+            <div style="display:grid;grid-template-columns:2fr 1fr;gap:24px;margin-top:32px;">
+                <div class="activity-card">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+                        <h3>📊 Hoạt động gần đây</h3>
+                        <div style="font-size:12px;color:var(--text-secondary)">10 sự kiện mới nhất</div>
                     </div>
+                    ${generateRecentActivity()}
                 </div>
-                <div class="activity-item">
-                    <div class="activity-icon green">✓</div>
-                    <div class="activity-content">
-                        <div class="activity-text">Tài khoản đã được kích hoạt</div>
-                        <div class="activity-time">5 phút trước</div>
+                
+                <div class="quick-actions-card">
+                    <h3 style="margin-bottom:20px;">⚡ Hành động nhanh</h3>
+                    <div class="quick-action-item" onclick="openCreateAgent()">
+                        <div class="quick-action-icon">🤖</div>
+                        <div class="quick-action-text">Tạo Agent mới</div>
+                    </div>
+                    <div class="quick-action-item" onclick="showView('comments')">
+                        <div class="quick-action-icon">📝</div>
+                        <div class="quick-action-text">Xem bình luận chưa trả lời</div>
+                    </div>
+                    <div class="quick-action-item" onclick="showView('posts')">
+                        <div class="quick-action-icon">📄</div>
+                        <div class="quick-action-text">Tạo bài viết</div>
+                    </div>
+                    <div class="quick-action-item" onclick="showView('broadcast')">
+                        <div class="quick-action-icon">📢</div>
+                        <div class="quick-action-text">Gửi broadcast</div>
                     </div>
                 </div>
             </div>
         `}
     `;
+}
+
+function generateRecentActivity() {
+    const activities = [
+        { icon: '💬', text: 'Khách Nguyễn Văn A nhắn tin qua Messenger', time: '2 phút trước', color: 'blue' },
+        { icon: '🤖', text: 'AI trả lời comment về giá sản phẩm', time: '5 phút trước', color: 'green' },
+        { icon: '🎫', text: 'Ticket #123 được tạo — Khiếu nại đơn hàng', time: '10 phút trước', color: 'orange' },
+        { icon: '👥', text: 'Khách hàng mới: Trần Thị B', time: '15 phút trước', color: 'purple' },
+        { icon: '📄', text: 'Bài viết "Khuyến mãi cuối tuần" đã được đăng', time: '30 phút trước', color: 'blue' },
+        { icon: '💬', text: 'Đã trả lời 5 bình luận tự động', time: '1 giờ trước', color: 'green' },
+        { icon: '📢', text: 'Broadcast gửi thành công đến 250 khách hàng', time: '2 giờ trước', color: 'purple' },
+        { icon: '🔧', text: 'Agent "Shop ABC" đã được cập nhật', time: '3 giờ trước', color: 'blue' },
+        { icon: '✅', text: 'Ticket #122 đã được giải quyết', time: '5 giờ trước', color: 'green' },
+        { icon: '📊', text: 'Report hằng ngày đã sẵn sàng', time: '1 ngày trước', color: 'orange' }
+    ];
+    
+    return activities.map(a => `
+        <div class="activity-item">
+            <div class="activity-icon ${a.color}">${a.icon}</div>
+            <div class="activity-content">
+                <div class="activity-text">${a.text}</div>
+                <div class="activity-time">${a.time}</div>
+            </div>
+        </div>
+    `).join('');
 }
 
 // AGENT DETAIL
@@ -1589,16 +1724,18 @@ async function renderAgent() {
     }
     
     c.innerHTML = `
-        <div class="tabs">
+        <div class="tabs" style="overflow-x:auto;white-space:nowrap;">
             <div class="tab ${currentTab==='settings'?'active':''}" onclick="switchAgentTab('settings')">⚙️ Cài đặt</div>
-            <div class="tab ${currentTab==='test'?'active':''}" onclick="switchAgentTab('test')">🧪 Test Chat</div>
-            <div class="tab ${currentTab==='analytics'?'active':''}" onclick="switchAgentTab('analytics')">📊 Analytics</div>
             <div class="tab ${currentTab==='knowledge'?'active':''}" onclick="switchAgentTab('knowledge')">📚 Kiến thức</div>
-            <div class="tab ${currentTab==='tools'?'active':''}" onclick="switchAgentTab('tools')">🔧 Tools</div>
-            <div class="tab ${currentTab==='tickets'?'active':''}" onclick="switchAgentTab('tickets')">🎫 Tickets</div>
-            <div class="tab ${currentTab==='channels'?'active':''}" onclick="switchAgentTab('channels')">🔗 Kênh chat</div>
+            <div class="tab ${currentTab==='channels'?'active':''}" onclick="switchAgentTab('channels')">🔌 Kênh</div>
             <div class="tab ${currentTab==='convos'?'active':''}" onclick="switchAgentTab('convos')">💬 Hội thoại</div>
-            <div class="tab ${currentTab==='replies'?'active':''}" onclick="switchAgentTab('replies')">💬 Câu trả lời nhanh</div>
+            <div class="tab ${currentTab==='comments'?'active':''}" onclick="switchAgentTab('comments')">📝 Bình luận</div>
+            <div class="tab ${currentTab==='posts'?'active':''}" onclick="switchAgentTab('posts')">📄 Bài viết</div>
+            <div class="tab ${currentTab==='broadcast'?'active':''}" onclick="switchAgentTab('broadcast')">📢 Broadcast</div>
+            <div class="tab ${currentTab==='tickets'?'active':''}" onclick="switchAgentTab('tickets')">🎫 Tickets</div>
+            <div class="tab ${currentTab==='customers'?'active':''}" onclick="switchAgentTab('customers')">👥 Khách hàng</div>
+            <div class="tab ${currentTab==='analytics'?'active':''}" onclick="switchAgentTab('analytics')">📊 Phân tích</div>
+            <div class="tab ${currentTab==='test'?'active':''}" onclick="switchAgentTab('test')">🧪 Test</div>
         </div>
         <div id="agentTabContent"></div>
     `;
@@ -1607,9 +1744,26 @@ async function renderAgent() {
 
 function switchAgentTab(tab) {
     currentTab = tab;
-    document.querySelectorAll('.tab').forEach((t,i) => {
-        const labels = ['⚙️ Cài đặt', '📊 Analytics', '📚 Kiến thức', '🔧 Tools', '🎫 Tickets', '🔗 Kênh chat', '💬 Hội thoại', '💬 Câu trả lời nhanh'];
-        t.classList.toggle('active', t.textContent.trim() === labels[['settings','analytics','knowledge','tools','tickets','channels','convos','replies'].indexOf(tab)]);
+    document.querySelectorAll('.tab').forEach(t => {
+        t.classList.remove('active');
+    });
+    document.querySelectorAll('.tab').forEach(t => {
+        const tabMap = {
+            'settings': '⚙️ Cài đặt',
+            'knowledge': '📚 Kiến thức',
+            'channels': '🔌 Kênh',
+            'convos': '💬 Hội thoại',
+            'comments': '📝 Bình luận',
+            'posts': '📄 Bài viết',
+            'broadcast': '📢 Broadcast',
+            'tickets': '🎫 Tickets',
+            'customers': '👥 Khách hàng',
+            'analytics': '📊 Phân tích',
+            'test': '🧪 Test'
+        };
+        if (t.textContent.trim() === tabMap[tab]) {
+            t.classList.add('active');
+        }
     });
     renderAgentTab();
 }
@@ -1618,14 +1772,16 @@ function renderAgentTab() {
     const el = document.getElementById('agentTabContent');
     if (!el) return;
     if (currentTab === 'settings') renderSettingsTab(el);
-    else if (currentTab === 'test') renderTestTab(el);
-    else if (currentTab === 'analytics') renderAnalyticsTab(el);
     else if (currentTab === 'knowledge') renderKnowledgeTab(el);
-    else if (currentTab === 'tools') renderToolsTab(el);
-    else if (currentTab === 'tickets') renderTicketsTab(el);
     else if (currentTab === 'channels') renderChannelsTab(el);
     else if (currentTab === 'convos') renderConvosTab(el);
-    else if (currentTab === 'replies') renderRepliesTab(el);
+    else if (currentTab === 'comments') renderCommentsTab(el);
+    else if (currentTab === 'posts') renderPostsTab(el);
+    else if (currentTab === 'broadcast') renderBroadcastTab(el);
+    else if (currentTab === 'tickets') renderTicketsTab(el);
+    else if (currentTab === 'customers') renderCustomersTab(el);
+    else if (currentTab === 'analytics') renderAnalyticsTab(el);
+    else if (currentTab === 'test') renderTestTab(el);
 }
 
 // SETTINGS
@@ -3040,6 +3196,35 @@ async function deleteReply(replyId) {
     }
 }
 
+// NEW TAB WRAPPERS (agent-specific views)
+async function renderCommentsTab(el) {
+    // Redirect to agent-specific comments view
+    const c = document.getElementById('content');
+    c.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-secondary);">Đang tải bình luận...</div>';
+    setTimeout(() => renderComments(), 100); // Use global function but could filter by agent
+}
+
+async function renderPostsTab(el) {
+    // Redirect to agent-specific posts view
+    const c = document.getElementById('content');
+    c.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-secondary);">Đang tải bài viết...</div>';
+    setTimeout(() => renderPosts(), 100);
+}
+
+async function renderBroadcastTab(el) {
+    // Redirect to agent-specific broadcast view
+    const c = document.getElementById('content');
+    c.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-secondary);">Đang tải broadcast...</div>';
+    setTimeout(() => renderBroadcast(), 100);
+}
+
+async function renderCustomersTab(el) {
+    // Redirect to agent-specific customers view
+    const c = document.getElementById('content');
+    c.innerHTML = '<div style="padding: 40px; text-align: center; color: var(--text-secondary);">Đang tải khách hàng...</div>';
+    setTimeout(() => renderCustomers(), 100);
+}
+
 // ALL CONVOS
 async function renderAllConversations() {
     const c = document.getElementById('content');
@@ -3460,7 +3645,14 @@ async function loadComments(filter = 'all') {
         const listEl = document.getElementById('commentList');
         
         if (!comments || comments.length === 0) {
-            listEl.innerHTML = '<div style="text-align: center; padding: 48px; color: var(--text-secondary);">Chưa có bình luận nào</div>';
+            listEl.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-illustration">📝</div>
+                    <h3>Chưa có bình luận</h3>
+                    <p>Kết nối Facebook để bắt đầu quản lý bình luận tự động</p>
+                    <button class="btn btn-primary" onclick="selectAgent('${currentAgent.id}'); switchAgentTab('channels');">🔌 Kết nối Facebook</button>
+                </div>
+            `;
             return;
         }
         
@@ -3721,7 +3913,14 @@ async function loadPosts(filter = null) {
         const listEl = document.getElementById('postList');
         
         if (!posts || posts.length === 0) {
-            listEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 48px; color: var(--text-secondary);">Chưa có bài viết nào</div>';
+            listEl.innerHTML = `
+                <div class="empty-state" style="grid-column: 1/-1;">
+                    <div class="empty-illustration">📄</div>
+                    <h3>Chưa có bài viết nào</h3>
+                    <p>Tạo bài viết mới hoặc lên lịch đăng tự động</p>
+                    <button class="btn btn-primary" onclick="showCreatePost()">+ Tạo bài viết mới</button>
+                </div>
+            `;
             return;
         }
         

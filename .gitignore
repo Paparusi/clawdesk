@@ -6,3 +6,11 @@ data/
 dist/
 build/
 .venv/
+database/
+*.db
+*.sqlite
+
+# Internal docs (don't commit)
+UPGRADE_*.md
+BATCH_*.md
+TASK_SUMMARY.md
