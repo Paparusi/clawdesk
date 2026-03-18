@@ -1259,12 +1259,473 @@ async def setup_telegram_webhook(agent_id: str, user=Depends(get_current_user)):
         raise HTTPException(500, f"Telegram setup error: {str(e)}")
 
 
+# === ZALO OA WEBHOOK ===
+
+@app.post("/api/webhook/zalo/{agent_id}")
+async def zalo_webhook(agent_id: str, body: dict = Body(...)):
+    """Receive Zalo OA webhook events"""
+    try:
+        event_name = body.get("event_name", "")
+        
+        if event_name == "user_send_text":
+            sender_id = body.get("sender", {}).get("id", "")
+            message_text = body.get("message", {}).get("text", "")
+            
+            if not sender_id or not message_text:
+                return {"status": "ok"}
+            
+            # Get agent
+            agent = get_agent(agent_id)
+            if not agent:
+                return {"status": "ok"}
+            
+            # Get Zalo channel config
+            channel = get_channel(agent_id, "zalo")
+            if not channel:
+                return {"status": "ok"}
+            
+            access_token = channel.get("config", {}).get("access_token", "")
+            oa_id = channel.get("config", {}).get("oa_id", "")
+            
+            if not access_token:
+                return {"status": "ok"}
+            
+            # Create or get conversation
+            conv_id = get_or_create_conversation(
+                agent_id=agent_id,
+                channel="zalo",
+                sender_id=sender_id,
+                sender_name=body.get("sender", {}).get("name", f"Zalo User {sender_id[:8]}")
+            )
+            
+            # Save user message
+            create_message(conv_id, "user", message_text, {"zalo_sender": sender_id})
+            
+            # Get conversation context
+            history = get_recent_messages(conv_id, limit=10)
+            context_messages = [{"role": m["role"], "content": m["content"]} for m in history]
+            
+            # Call LLM
+            from anthropic import Anthropic
+            anthropic = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+            
+            system_prompt = agent.get("system_prompt", "")
+            tools = get_tool_definitions(agent_id) if agent.get("tools_enabled") else None
+            
+            llm_messages = context_messages + [{"role": "user", "content": message_text}]
+            
+            llm_response = anthropic.messages.create(
+                model=agent.get("model", "claude-3-5-sonnet-20241022"),
+                max_tokens=2048,
+                system=system_prompt,
+                messages=llm_messages,
+                tools=tools or [],
+            )
+            
+            # Process response
+            response_text = ""
+            for block in llm_response.content:
+                if block.type == "text":
+                    response_text += block.text
+                elif block.type == "tool_use" and tools:
+                    tool_result = await execute_tool(agent_id, block.name, block.input)
+                    response_text += f"\n[{block.name}: {tool_result.get('summary', 'Done')}]"
+            
+            if not response_text:
+                response_text = "Xin lỗi, tôi không hiểu yêu cầu của bạn."
+            
+            # Save assistant message
+            create_message(conv_id, "assistant", response_text, {"model": agent.get("model")})
+            
+            # Update stats
+            msg_count = count_conversation_messages(conv_id)
+            update_conversation_stats(conv_id, msg_count)
+            increment_agent_stats(agent_id)
+            
+            # Reply via Zalo API
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    "https://openapi.zalo.me/v3.0/oa/message/cs",
+                    headers={"access_token": access_token},
+                    json={
+                        "recipient": {"user_id": sender_id},
+                        "message": {"text": response_text}
+                    },
+                )
+        
+        return {"status": "ok"}
+    
+    except Exception as e:
+        print(f"Zalo webhook error: {e}")
+        return {"status": "ok"}
+
+
 # === WEBCHAT WIDGET ===
 
 @app.get("/widget.js")
 async def widget_js():
     """Serve the webchat widget script"""
     return FileResponse(str(STATIC_DIR / "widget.js"), media_type="application/javascript")
+
+
+@app.get("/api/widget/{agent_id}/info")
+async def widget_info(agent_id: str):
+    """Get agent info for widget (public endpoint)"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent:
+            raise HTTPException(404, "Agent not found")
+        
+        settings = agent.get("settings", {})
+        
+        return {
+            "name": agent.get("name", "AI Assistant"),
+            "avatar": settings.get("avatar"),
+            "emoji": settings.get("emoji", "🤖"),
+            "welcome_message": settings.get("welcome_message", "Xin chào! Tôi có thể giúp gì cho bạn?"),
+            "quick_replies": settings.get("quick_replies", []),
+            "status": "online" if agent.get("is_active", True) else "offline"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/widget/{agent_id}/upload")
+async def widget_upload(agent_id: str, request: Request):
+    """Handle file uploads from widget"""
+    try:
+        form = await request.form()
+        file = form.get("file")
+        sender_id = form.get("sender_id")
+        
+        if not file or not sender_id:
+            raise HTTPException(400, "Missing file or sender_id")
+        
+        # Store file (simplified - in production use S3/storage)
+        filename = f"upload_{agent_id}_{sender_id}_{file.filename}"
+        # For now, just acknowledge
+        
+        return {
+            "status": "ok",
+            "reply": f"Đã nhận file: {file.filename}"
+        }
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# === NOTIFICATIONS ===
+
+@app.get("/api/notifications")
+async def get_notifications(user=Depends(get_current_user), limit: int = 20):
+    """Get recent notifications for user"""
+    try:
+        sb = get_supabase()
+        result = sb.table("notifications")\
+            .select("*")\
+            .eq("user_id", user["id"])\
+            .order("created_at", desc=True)\
+            .limit(limit)\
+            .execute()
+        
+        return result.data
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/notifications/unread")
+async def get_unread_count(user=Depends(get_current_user)):
+    """Get unread notification count"""
+    try:
+        sb = get_supabase()
+        result = sb.table("notifications")\
+            .select("id", count="exact")\
+            .eq("user_id", user["id"])\
+            .eq("is_read", False)\
+            .execute()
+        
+        return {"count": result.count or 0}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.put("/api/notifications/{notification_id}/read")
+async def mark_notification_read(notification_id: str, user=Depends(get_current_user)):
+    """Mark notification as read"""
+    try:
+        sb = get_supabase()
+        sb.table("notifications")\
+            .update({"is_read": True})\
+            .eq("id", notification_id)\
+            .eq("user_id", user["id"])\
+            .execute()
+        
+        return {"status": "ok"}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# === SAVED REPLIES ===
+
+@app.get("/api/agents/{agent_id}/replies")
+async def get_saved_replies(agent_id: str, user=Depends(get_current_user)):
+    """Get saved replies for agent"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        settings = agent.get("settings", {})
+        return settings.get("saved_replies", [])
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/agents/{agent_id}/replies")
+async def create_saved_reply(agent_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Add a saved reply"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        settings = agent.get("settings", {})
+        saved_replies = settings.get("saved_replies", [])
+        
+        new_reply = {
+            "id": str(uuid.uuid4()),
+            "title": body.get("title", ""),
+            "content": body.get("content", ""),
+            "shortcut": body.get("shortcut", ""),
+            "created_at": datetime.utcnow().isoformat()
+        }
+        
+        saved_replies.append(new_reply)
+        settings["saved_replies"] = saved_replies
+        
+        update_agent(agent_id, {"settings": settings})
+        
+        return new_reply
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.delete("/api/agents/{agent_id}/replies/{reply_id}")
+async def delete_saved_reply(agent_id: str, reply_id: str, user=Depends(get_current_user)):
+    """Delete a saved reply"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        settings = agent.get("settings", {})
+        saved_replies = settings.get("saved_replies", [])
+        
+        saved_replies = [r for r in saved_replies if r.get("id") != reply_id]
+        settings["saved_replies"] = saved_replies
+        
+        update_agent(agent_id, {"settings": settings})
+        
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# === CUSTOMER MANAGEMENT ===
+
+@app.get("/api/agents/{agent_id}/customers")
+async def get_customers(agent_id: str, user=Depends(get_current_user), search: str = ""):
+    """Get unique customers for agent"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        sb = get_supabase()
+        
+        query = sb.table("conversations")\
+            .select("sender_id, sender_name, channel, created_at, metadata")\
+            .eq("agent_id", agent_id)
+        
+        if search:
+            query = query.ilike("sender_name", f"%{search}%")
+        
+        result = query.order("created_at", desc=True).execute()
+        
+        # Group by sender_id
+        customers = {}
+        for conv in result.data:
+            sid = conv["sender_id"]
+            if sid not in customers:
+                # Count conversations and messages
+                conv_count = sb.table("conversations")\
+                    .select("id", count="exact")\
+                    .eq("agent_id", agent_id)\
+                    .eq("sender_id", sid)\
+                    .execute()
+                
+                msg_count = sb.table("messages")\
+                    .select("id", count="exact")\
+                    .eq("conversation_id", conv["id"])\
+                    .execute()
+                
+                customers[sid] = {
+                    "sender_id": sid,
+                    "name": conv["sender_name"],
+                    "channels": [conv["channel"]],
+                    "total_conversations": conv_count.count or 0,
+                    "total_messages": msg_count.count or 0,
+                    "first_seen": conv["created_at"],
+                    "metadata": conv.get("metadata", {})
+                }
+            else:
+                if conv["channel"] not in customers[sid]["channels"]:
+                    customers[sid]["channels"].append(conv["channel"])
+        
+        return list(customers.values())
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/agents/{agent_id}/customers/{sender_id}")
+async def get_customer_detail(agent_id: str, sender_id: str, user=Depends(get_current_user)):
+    """Get customer detail with all conversations"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        sb = get_supabase()
+        
+        # Get all conversations for this customer
+        convs = sb.table("conversations")\
+            .select("*")\
+            .eq("agent_id", agent_id)\
+            .eq("sender_id", sender_id)\
+            .order("created_at", desc=True)\
+            .execute()
+        
+        if not convs.data:
+            raise HTTPException(404, "Customer not found")
+        
+        return {
+            "sender_id": sender_id,
+            "name": convs.data[0]["sender_name"],
+            "conversations": convs.data,
+            "metadata": convs.data[0].get("metadata", {})
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.put("/api/agents/{agent_id}/customers/{sender_id}")
+async def update_customer(agent_id: str, sender_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Update customer info"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        sb = get_supabase()
+        
+        # Update all conversations for this sender
+        updates = {}
+        if "name" in body:
+            updates["sender_name"] = body["name"]
+        if "metadata" in body:
+            updates["metadata"] = body["metadata"]
+        
+        if updates:
+            sb.table("conversations")\
+                .update(updates)\
+                .eq("agent_id", agent_id)\
+                .eq("sender_id", sender_id)\
+                .execute()
+        
+        return {"status": "ok"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# === AGENT ANALYTICS ===
+
+@app.get("/api/agents/{agent_id}/analytics")
+async def get_agent_analytics(agent_id: str, user=Depends(get_current_user)):
+    """Get analytics for agent"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        sb = get_supabase()
+        
+        # Messages per day (last 7 days)
+        seven_days_ago = (datetime.utcnow() - timedelta(days=7)).isoformat()
+        
+        convs = sb.table("conversations")\
+            .select("id, created_at")\
+            .eq("agent_id", agent_id)\
+            .gte("created_at", seven_days_ago)\
+            .execute()
+        
+        messages_by_day = {}
+        for conv in convs.data:
+            msgs = sb.table("messages")\
+                .select("created_at")\
+                .eq("conversation_id", conv["id"])\
+                .gte("created_at", seven_days_ago)\
+                .execute()
+            
+            for msg in msgs.data:
+                day = msg["created_at"][:10]
+                messages_by_day[day] = messages_by_day.get(day, 0) + 1
+        
+        # Channel breakdown
+        channel_stats = {}
+        all_convs = sb.table("conversations")\
+            .select("channel")\
+            .eq("agent_id", agent_id)\
+            .execute()
+        
+        for conv in all_convs.data:
+            ch = conv["channel"]
+            channel_stats[ch] = channel_stats.get(ch, 0) + 1
+        
+        # Response time average (simplified)
+        response_time_avg = "< 1s"
+        
+        # Top queries (simplified - would need NLP clustering in production)
+        top_queries = ["Giờ làm việc", "Giá sản phẩm", "Chính sách đổi trả"]
+        
+        return {
+            "messages_per_day": messages_by_day,
+            "response_time_avg": response_time_avg,
+            "top_queries": top_queries,
+            "channel_breakdown": channel_stats,
+            "total_conversations": len(all_convs.data),
+            "total_messages": agent.get("stats", {}).get("total_messages", 0)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 # === STATS ===

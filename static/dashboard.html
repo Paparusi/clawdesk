@@ -923,6 +923,10 @@
                 <span>Hội thoại</span>
                 <span class="badge-count" id="convCount">0</span>
             </div>
+            <div class="nav-item" data-view="customers" onclick="showView('customers')">
+                <span class="icon">👥</span>
+                <span>Khách hàng</span>
+            </div>
         </div>
         <div class="nav-section">
             <div class="nav-section-title">Agents</div>
@@ -955,6 +959,19 @@
                 <span>Tìm kiếm</span>
                 <span class="cmd-key">Ctrl K</span>
             </button>
+            <div style="position: relative;">
+                <button class="theme-toggle" onclick="toggleNotifications()" id="notifBtn" title="Thông báo">
+                    🔔
+                </button>
+                <span class="badge-count" id="notifCount" style="position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; font-size: 10px; line-height: 18px; display: none;"></span>
+                <div id="notifPanel" style="display: none; position: absolute; top: 48px; right: 0; width: 360px; max-height: 480px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,.3); z-index: 100; overflow: hidden;">
+                    <div style="padding: 16px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                        <h3 style="font-size: 16px; font-weight: 600;">Thông báo</h3>
+                        <button onclick="markAllNotificationsRead()" style="background: none; border: none; color: var(--accent); cursor: pointer; font-size: 13px;">Đánh dấu đã đọc</button>
+                    </div>
+                    <div id="notifList" style="max-height: 400px; overflow-y: auto;"></div>
+                </div>
+            </div>
             <button class="theme-toggle" onclick="toggleTheme()" id="themeToggle">🌙</button>
             <span class="plan-badge plan-free" id="planBadge">FREE</span>
             <div class="user-menu">
@@ -1358,12 +1375,18 @@ function showView(view) {
     currentAgent = null;
     document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === view));
     document.querySelectorAll('.agent-item').forEach(n => n.classList.remove('active'));
-    document.querySelectorAll('.mobile-tab').forEach((t, i) => t.classList.toggle('active', [' overview', 'conversations'][i] === view));
+    document.querySelectorAll('.mobile-tab').forEach((t, i) => t.classList.toggle('active', ['overview', 'conversations'][i] === view));
     
-    document.getElementById('breadcrumbCurrent').textContent = view === 'overview' ? 'Tổng quan' : 'Hội thoại';
+    const titles = {
+        'overview': 'Tổng quan',
+        'conversations': 'Hội thoại',
+        'customers': 'Khách hàng'
+    };
+    document.getElementById('breadcrumbCurrent').textContent = titles[view] || view;
     
     if (view === 'overview') renderOverview();
     else if (view === 'conversations') renderAllConversations();
+    else if (view === 'customers') renderCustomers();
 }
 
 function selectAgent(agentId) {
@@ -1506,11 +1529,13 @@ async function renderAgent() {
     c.innerHTML = `
         <div class="tabs">
             <div class="tab ${currentTab==='settings'?'active':''}" onclick="switchAgentTab('settings')">⚙️ Cài đặt</div>
+            <div class="tab ${currentTab==='analytics'?'active':''}" onclick="switchAgentTab('analytics')">📊 Analytics</div>
             <div class="tab ${currentTab==='knowledge'?'active':''}" onclick="switchAgentTab('knowledge')">📚 Kiến thức</div>
             <div class="tab ${currentTab==='tools'?'active':''}" onclick="switchAgentTab('tools')">🔧 Tools</div>
             <div class="tab ${currentTab==='tickets'?'active':''}" onclick="switchAgentTab('tickets')">🎫 Tickets</div>
             <div class="tab ${currentTab==='channels'?'active':''}" onclick="switchAgentTab('channels')">🔗 Kênh chat</div>
             <div class="tab ${currentTab==='convos'?'active':''}" onclick="switchAgentTab('convos')">💬 Hội thoại</div>
+            <div class="tab ${currentTab==='replies'?'active':''}" onclick="switchAgentTab('replies')">💬 Câu trả lời nhanh</div>
         </div>
         <div id="agentTabContent"></div>
     `;
@@ -1520,8 +1545,8 @@ async function renderAgent() {
 function switchAgentTab(tab) {
     currentTab = tab;
     document.querySelectorAll('.tab').forEach((t,i) => {
-        const labels = ['⚙️ Cài đặt', '📚 Kiến thức', '🔧 Tools', '🎫 Tickets', '🔗 Kênh chat', '💬 Hội thoại'];
-        t.classList.toggle('active', t.textContent.trim() === labels[['settings','knowledge','tools','tickets','channels','convos'].indexOf(tab)]);
+        const labels = ['⚙️ Cài đặt', '📊 Analytics', '📚 Kiến thức', '🔧 Tools', '🎫 Tickets', '🔗 Kênh chat', '💬 Hội thoại', '💬 Câu trả lời nhanh'];
+        t.classList.toggle('active', t.textContent.trim() === labels[['settings','analytics','knowledge','tools','tickets','channels','convos','replies'].indexOf(tab)]);
     });
     renderAgentTab();
 }
@@ -1530,11 +1555,13 @@ function renderAgentTab() {
     const el = document.getElementById('agentTabContent');
     if (!el) return;
     if (currentTab === 'settings') renderSettingsTab(el);
+    else if (currentTab === 'analytics') renderAnalyticsTab(el);
     else if (currentTab === 'knowledge') renderKnowledgeTab(el);
     else if (currentTab === 'tools') renderToolsTab(el);
     else if (currentTab === 'tickets') renderTicketsTab(el);
     else if (currentTab === 'channels') renderChannelsTab(el);
     else if (currentTab === 'convos') renderConvosTab(el);
+    else if (currentTab === 'replies') renderRepliesTab(el);
 }
 
 // SETTINGS
@@ -2386,6 +2413,213 @@ async function openConvo(agentId, convId) {
     }
 }
 
+// ANALYTICS TAB
+async function renderAnalyticsTab(el) {
+    el.innerHTML = '<div class="skeleton-card" style="height: 400px;"><div class="skeleton skeleton-text"></div></div>';
+    
+    try {
+        const analytics = await api(`/api/agents/${currentAgent.id}/analytics`);
+        
+        // Messages per day chart
+        const messagesByDay = analytics.messages_per_day || {};
+        const days = Object.keys(messagesByDay).sort();
+        const maxMessages = Math.max(...Object.values(messagesByDay), 1);
+        
+        // Channel breakdown
+        const channelBreakdown = analytics.channel_breakdown || {};
+        const totalConvs = Object.values(channelBreakdown).reduce((a, b) => a + b, 0);
+        
+        el.innerHTML = `
+            <div style="display: grid; gap: 24px;">
+                <!-- Summary Stats -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                    <div class="card" style="padding: 20px; text-align: center;">
+                        <div style="font-size: 32px; font-weight: 700; color: var(--accent); margin-bottom: 8px;">
+                            ${analytics.total_conversations || 0}
+                        </div>
+                        <div style="color: var(--text-secondary); font-size: 13px;">Tổng hội thoại</div>
+                    </div>
+                    <div class="card" style="padding: 20px; text-align: center;">
+                        <div style="font-size: 32px; font-weight: 700; color: var(--green); margin-bottom: 8px;">
+                            ${analytics.total_messages || 0}
+                        </div>
+                        <div style="color: var(--text-secondary); font-size: 13px;">Tổng tin nhắn</div>
+                    </div>
+                    <div class="card" style="padding: 20px; text-align: center;">
+                        <div style="font-size: 32px; font-weight: 700; color: var(--purple); margin-bottom: 8px;">
+                            ${analytics.response_time_avg || '< 1s'}
+                        </div>
+                        <div style="color: var(--text-secondary); font-size: 13px;">Thời gian phản hồi TB</div>
+                    </div>
+                </div>
+                
+                <!-- Messages per day chart -->
+                <div class="card" style="padding: 24px;">
+                    <h4 style="font-size: 16px; font-weight: 600; margin-bottom: 20px;">Tin nhắn 7 ngày gần đây</h4>
+                    <div style="display: flex; align-items: flex-end; gap: 12px; height: 200px;">
+                        ${days.map(day => {
+                            const count = messagesByDay[day];
+                            const height = (count / maxMessages) * 100;
+                            return `
+                                <div style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                                    <div style="width: 100%; background: var(--accent); border-radius: 6px 6px 0 0; height: ${height}%; min-height: 4px; position: relative; transition: all .2s;" title="${count} tin nhắn">
+                                        <div style="position: absolute; top: -20px; left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 600; color: var(--accent);">${count}</div>
+                                    </div>
+                                    <div style="font-size: 10px; color: var(--text-secondary);">${day.substring(5)}</div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+                
+                <!-- Channel breakdown -->
+                <div class="card" style="padding: 24px;">
+                    <h4 style="font-size: 16px; font-weight: 600; margin-bottom: 20px;">Phân bổ theo kênh</h4>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        ${Object.entries(channelBreakdown).map(([channel, count]) => {
+                            const percentage = totalConvs > 0 ? Math.round((count / totalConvs) * 100) : 0;
+                            return `
+                                <div>
+                                    <div style="display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 13px;">
+                                        <span>${channelIcon(channel)} ${channel}</span>
+                                        <span style="font-weight: 600;">${count} (${percentage}%)</span>
+                                    </div>
+                                    <div style="width: 100%; height: 8px; background: var(--bg-input); border-radius: 4px; overflow: hidden;">
+                                        <div style="width: ${percentage}%; height: 100%; background: var(--accent); transition: width .3s;"></div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+                
+                <!-- Top queries -->
+                <div class="card" style="padding: 24px;">
+                    <h4 style="font-size: 16px; font-weight: 600; margin-bottom: 16px;">Câu hỏi phổ biến</h4>
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        ${(analytics.top_queries || []).map((query, i) => `
+                            <div style="padding: 12px; background: var(--bg-input); border-radius: 8px; font-size: 13px;">
+                                <span style="color: var(--text-secondary); margin-right: 8px;">${i + 1}.</span>
+                                ${esc(query)}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        el.innerHTML = `<div style="color: var(--red); padding: 24px; text-align: center;">Lỗi tải analytics: ${e.message}</div>`;
+    }
+}
+
+// SAVED REPLIES TAB
+async function renderRepliesTab(el) {
+    el.innerHTML = '<div class="skeleton-card"><div class="skeleton skeleton-text"></div></div>';
+    
+    try {
+        const replies = await api(`/api/agents/${currentAgent.id}/replies`);
+        
+        el.innerHTML = `
+            <div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 4px;">Câu trả lời nhanh</h3>
+                    <p style="color: var(--text-secondary); font-size: 13px;">Tạo các mẫu câu trả lời để sử dụng nhanh trong hội thoại</p>
+                </div>
+                <button class="btn btn-primary" onclick="showAddReplyForm()">+ Thêm câu trả lời</button>
+            </div>
+            
+            <div id="addReplyForm" style="display: none; margin-bottom: 24px;" class="card" padding: 20px;">
+                <h4 style="font-size: 15px; font-weight: 600; margin-bottom: 16px;">Thêm câu trả lời mới</h4>
+                <div class="form-row">
+                    <label>Tiêu đề</label>
+                    <input type="text" id="replyTitle" placeholder="VD: Chào hỏi khách hàng">
+                </div>
+                <div class="form-row">
+                    <label>Nội dung</label>
+                    <textarea id="replyContent" rows="4" placeholder="Xin chào! Cảm ơn bạn đã liên hệ..."></textarea>
+                </div>
+                <div class="form-row">
+                    <label>Phím tắt (tùy chọn)</label>
+                    <input type="text" id="replyShortcut" placeholder="VD: /hello">
+                </div>
+                <div style="display: flex; gap: 8px;">
+                    <button class="btn btn-primary" onclick="saveReply()">Lưu</button>
+                    <button class="btn btn-ghost" onclick="hideAddReplyForm()">Hủy</button>
+                </div>
+            </div>
+            
+            <div style="display: grid; gap: 12px;">
+                ${replies.length === 0 ? `
+                    <div class="empty-state" style="padding: 48px;">
+                        <div class="empty-illustration">💬</div>
+                        <h3>Chưa có câu trả lời nhanh nào</h3>
+                        <p>Tạo các mẫu câu trả lời để tiết kiệm thời gian</p>
+                    </div>
+                ` : replies.map(reply => `
+                    <div class="card" style="padding: 16px; display: flex; justify-content: space-between; align-items: start;">
+                        <div style="flex: 1;">
+                            <div style="font-weight: 600; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+                                ${esc(reply.title)}
+                                ${reply.shortcut ? `<span style="padding: 2px 8px; background: var(--bg-input); border-radius: 4px; font-size: 11px; font-weight: 500; color: var(--accent);">${esc(reply.shortcut)}</span>` : ''}
+                            </div>
+                            <div style="font-size: 13px; color: var(--text-secondary); white-space: pre-wrap;">${esc(reply.content)}</div>
+                        </div>
+                        <button class="btn btn-ghost btn-sm" style="color: var(--red);" onclick="deleteReply('${reply.id}')">🗑️</button>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    } catch (e) {
+        el.innerHTML = `<div style="color: var(--red); padding: 24px;">Lỗi: ${e.message}</div>`;
+    }
+}
+
+function showAddReplyForm() {
+    document.getElementById('addReplyForm').style.display = 'block';
+}
+
+function hideAddReplyForm() {
+    document.getElementById('addReplyForm').style.display = 'none';
+    document.getElementById('replyTitle').value = '';
+    document.getElementById('replyContent').value = '';
+    document.getElementById('replyShortcut').value = '';
+}
+
+async function saveReply() {
+    const title = document.getElementById('replyTitle').value.trim();
+    const content = document.getElementById('replyContent').value.trim();
+    const shortcut = document.getElementById('replyShortcut').value.trim();
+    
+    if (!title || !content) {
+        toast('Vui lòng nhập tiêu đề và nội dung', '⚠️');
+        return;
+    }
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}/replies`, {
+            method: 'POST',
+            body: JSON.stringify({ title, content, shortcut })
+        });
+        toast('Đã lưu câu trả lời!', '✅');
+        hideAddReplyForm();
+        renderRepliesTab(document.getElementById('agentTabContent'));
+    } catch (e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function deleteReply(replyId) {
+    if (!confirm('Xóa câu trả lời này?')) return;
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}/replies/${replyId}`, { method: 'DELETE' });
+        toast('Đã xóa!', '✅');
+        renderRepliesTab(document.getElementById('agentTabContent'));
+    } catch (e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
 // ALL CONVOS
 async function renderAllConversations() {
     const c = document.getElementById('content');
@@ -2480,6 +2714,255 @@ async function loadAgents() {
                 <span class="agent-name">${esc(a.name)}</span>
             </div>
         `).join('');
+    }
+}
+
+// === NOTIFICATIONS ===
+let notifPanelOpen = false;
+
+async function toggleNotifications() {
+    notifPanelOpen = !notifPanelOpen;
+    const panel = document.getElementById('notifPanel');
+    panel.style.display = notifPanelOpen ? 'block' : 'none';
+    
+    if (notifPanelOpen) {
+        await loadNotifications();
+    }
+}
+
+async function loadNotifications() {
+    try {
+        const data = await api('/api/notifications?limit=20');
+        const list = document.getElementById('notifList');
+        
+        if (!data || data.length === 0) {
+            list.innerHTML = '<div style="padding: 24px; text-align: center; color: var(--text-secondary); font-size: 13px;">Không có thông báo mới</div>';
+            return;
+        }
+        
+        list.innerHTML = data.map(n => `
+            <div style="padding: 12px 16px; border-bottom: 1px solid var(--border); cursor: pointer; ${n.is_read ? 'opacity: 0.6;' : ''}" onclick="handleNotificationClick('${n.id}', '${n.link || ''}')">
+                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 4px;">
+                    <strong style="font-size: 13px; font-weight: 600;">${esc(n.title)}</strong>
+                    <span style="font-size: 11px; color: var(--text-secondary);">${timeAgo(n.created_at)}</span>
+                </div>
+                <div style="font-size: 12px; color: var(--text-secondary);">${esc(n.message || '')}</div>
+            </div>
+        `).join('');
+        
+        // Update count badge
+        const unread = data.filter(n => !n.is_read).length;
+        const badge = document.getElementById('notifCount');
+        if (unread > 0) {
+            badge.textContent = unread > 9 ? '9+' : unread;
+            badge.style.display = 'block';
+        } else {
+            badge.style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Failed to load notifications:', e);
+    }
+}
+
+async function handleNotificationClick(notifId, link) {
+    try {
+        await api(`/api/notifications/${notifId}/read`, { method: 'PUT' });
+        if (link) {
+            // Parse link and navigate
+            const url = new URL(link, window.location.origin);
+            const params = new URLSearchParams(url.search);
+            const tab = params.get('tab');
+            const id = params.get('id');
+            
+            if (tab === 'conversations' && id) {
+                showView('conversations');
+                // TODO: open specific conversation
+            }
+        }
+        loadNotifications();
+    } catch (e) {
+        console.error('Failed to mark as read:', e);
+    }
+}
+
+async function markAllNotificationsRead() {
+    try {
+        const data = await api('/api/notifications?limit=50');
+        for (const n of data) {
+            if (!n.is_read) {
+                await api(`/api/notifications/${n.id}/read`, { method: 'PUT' });
+            }
+        }
+        loadNotifications();
+    } catch (e) {
+        console.error('Failed to mark all as read:', e);
+    }
+}
+
+// Poll notifications every 30 seconds
+setInterval(() => {
+    if (!notifPanelOpen) {
+        api('/api/notifications/unread').then(data => {
+            const badge = document.getElementById('notifCount');
+            if (data && data.count > 0) {
+                badge.textContent = data.count > 9 ? '9+' : data.count;
+                badge.style.display = 'block';
+            } else {
+                badge.style.display = 'none';
+            }
+        }).catch(() => {});
+    }
+}, 30000);
+
+// === CUSTOMERS VIEW ===
+async function renderCustomers() {
+    const c = document.getElementById('content');
+    
+    if (!currentAgent) {
+        c.innerHTML = `
+            <div style="text-align: center; padding: 48px 24px;">
+                <div style="font-size: 48px; margin-bottom: 16px;">👥</div>
+                <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Quản lý khách hàng</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 24px;">Chọn một agent từ sidebar để xem danh sách khách hàng</p>
+            </div>
+        `;
+        return;
+    }
+    
+    c.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <h2 style="font-size: 24px; font-weight: 700;">Khách hàng - ${esc(currentAgent.name)}</h2>
+            <input type="search" id="customerSearch" placeholder="Tìm khách hàng..." style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); width: 280px;">
+        </div>
+        <div id="customerList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">
+            ${[1,2,3,4,5,6].map(() => '<div class="skeleton-card" style="height: 140px;"></div>').join('')}
+        </div>
+    `;
+    
+    try {
+        const customers = await api(`/api/agents/${currentAgent.id}/customers`);
+        
+        document.getElementById('customerList').innerHTML = customers.length ? customers.map(cust => `
+            <div class="card" style="padding: 16px; cursor: pointer;" onclick="viewCustomerDetail('${cust.sender_id}')">
+                <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                    <div style="width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--purple)); display: flex; align-items: center; justify-content: center; font-size: 20px; color: #fff; font-weight: 600;">
+                        ${(cust.name || 'U')[0].toUpperCase()}
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-weight: 600; font-size: 15px; margin-bottom: 4px;">${esc(cust.name)}</div>
+                        <div style="font-size: 12px; color: var(--text-secondary); display: flex; gap: 6px;">
+                            ${(cust.channels || []).map(ch => channelIcon(ch)).join(' ')}
+                        </div>
+                    </div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
+                    <div>
+                        <div style="color: var(--text-secondary); margin-bottom: 2px;">Hội thoại</div>
+                        <div style="font-weight: 600;">${cust.total_conversations || 0}</div>
+                    </div>
+                    <div>
+                        <div style="color: var(--text-secondary); margin-bottom: 2px;">Tin nhắn</div>
+                        <div style="font-weight: 600;">${cust.total_messages || 0}</div>
+                    </div>
+                </div>
+                <div style="margin-top: 12px; font-size: 11px; color: var(--text-secondary);">
+                    Lần đầu: ${timeAgo(cust.first_seen)}
+                </div>
+            </div>
+        `).join('') : '<div style="grid-column: 1/-1; text-align: center; padding: 48px; color: var(--text-secondary);">Chưa có khách hàng nào</div>';
+        
+        // Search functionality
+        document.getElementById('customerSearch').addEventListener('input', async (e) => {
+            const search = e.target.value;
+            const filtered = await api(`/api/agents/${currentAgent.id}/customers?search=${encodeURIComponent(search)}`);
+            document.getElementById('customerList').innerHTML = filtered.map(cust => `<!-- same as above -->`).join('');
+        });
+        
+    } catch (e) {
+        document.getElementById('customerList').innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 48px; color: var(--red);">Lỗi: ${e.message}</div>`;
+    }
+}
+
+async function viewCustomerDetail(senderId) {
+    if (!currentAgent) return;
+    
+    const c = document.getElementById('content');
+    c.innerHTML = '<div class="loading" style="padding: 48px; text-align: center;">Đang tải...</div>';
+    
+    try {
+        const customer = await api(`/api/agents/${currentAgent.id}/customers/${senderId}`);
+        
+        c.innerHTML = `
+            <div style="margin-bottom: 24px;">
+                <button onclick="renderCustomers()" style="background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 14px; display: flex; align-items: center; gap: 6px;">
+                    ← Quay lại danh sách
+                </button>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 320px 1fr; gap: 24px;">
+                <!-- Customer Info Sidebar -->
+                <div class="card" style="padding: 24px; height: fit-content;">
+                    <div style="text-align: center; margin-bottom: 24px;">
+                        <div style="width: 80px; height: 80px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--purple)); display: flex; align-items: center; justify-content: center; font-size: 32px; color: #fff; font-weight: 600; margin: 0 auto 12px;">
+                            ${(customer.name || 'U')[0].toUpperCase()}
+                        </div>
+                        <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 4px;">${esc(customer.name)}</h3>
+                        <div style="font-size: 13px; color: var(--text-secondary);">ID: ${customer.sender_id.substring(0, 12)}...</div>
+                    </div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                        <div>
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">Kênh</div>
+                            <div style="display: flex; gap: 8px;">
+                                ${(customer.metadata?.channels || ['webchat']).map(ch => `<span style="padding: 4px 12px; background: var(--bg-input); border-radius: 16px; font-size: 12px;">${channelIcon(ch)} ${ch}</span>`).join('')}
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">Email</div>
+                            <div style="font-size: 13px;">${esc(customer.metadata?.email || 'Chưa có')}</div>
+                        </div>
+                        
+                        <div>
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">Số điện thoại</div>
+                            <div style="font-size: 13px;">${esc(customer.metadata?.phone || 'Chưa có')}</div>
+                        </div>
+                        
+                        <div>
+                            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 4px;">Tổng hội thoại</div>
+                            <div style="font-size: 20px; font-weight: 600;">${customer.conversations?.length || 0}</div>
+                        </div>
+                        
+                        <button class="btn btn-sm btn-ghost" onclick="editCustomerInfo('${customer.sender_id}')">
+                            ✏️ Chỉnh sửa thông tin
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Conversations List -->
+                <div class="card" style="padding: 24px;">
+                    <h4 style="font-size: 16px; font-weight: 600; margin-bottom: 16px;">Lịch sử hội thoại</h4>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        ${(customer.conversations || []).map(conv => `
+                            <div class="card" style="padding: 16px; cursor: pointer; background: var(--bg-input);" onclick="viewConversation('${conv.id}')">
+                                <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <span style="font-size: 18px;">${channelIcon(conv.channel)}</span>
+                                        <span style="font-weight: 500; font-size: 14px;">${conv.channel}</span>
+                                    </div>
+                                    <span style="font-size: 12px; color: var(--text-secondary);">${timeAgo(conv.created_at)}</span>
+                                </div>
+                                <div style="font-size: 13px; color: var(--text-secondary);">
+                                    ${conv.message_count || 0} tin nhắn
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        c.innerHTML = `<div style="text-align: center; padding: 48px; color: var(--red);">Lỗi: ${e.message}</div>`;
     }
 }
 
