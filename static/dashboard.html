@@ -970,6 +970,302 @@
             .modal { max-width: calc(100vw - 32px); margin: 16px; max-height: 90vh; overflow-y: auto; }
             .user-dropdown { right: 0; }
         }
+        /* === BATCH 8 STYLES === */
+        
+        /* Template Gallery */
+        .template-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 16px;
+        }
+        
+        .template-card {
+            background: var(--bg-base);
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all .2s;
+            text-align: center;
+        }
+        
+        .template-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(129,140,248,.15);
+        }
+        
+        .template-custom {
+            border-style: dashed;
+            border-color: var(--zinc-600);
+        }
+        
+        .template-icon {
+            font-size: 48px;
+            margin-bottom: 12px;
+        }
+        
+        .template-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 8px;
+        }
+        
+        .template-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+        
+        /* Search Results */
+        .search-result-item {
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            transition: background .2s;
+        }
+        
+        .search-result-item:hover {
+            background: rgba(129,140,248,.08);
+        }
+        
+        .search-result-meta {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+        
+        .search-result-channel {
+            background: var(--zinc-700);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        
+        .search-result-time {
+            margin-left: auto;
+        }
+        
+        .search-result-content {
+            font-size: 14px;
+            color: var(--text-primary);
+            line-height: 1.4;
+        }
+        
+        .search-result-content mark {
+            background: rgba(251,191,36,.3);
+            color: var(--text-primary);
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+        
+        /* Automation Cards */
+        .automation-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .automation-card {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+        }
+        
+        .automation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 16px;
+        }
+        
+        .automation-header h4 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        
+        .automation-details {
+            background: var(--bg-base);
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .automation-trigger,
+        .automation-action {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        
+        .automation-trigger strong,
+        .automation-action strong {
+            color: var(--text-primary);
+            margin-right: 8px;
+        }
+        
+        .automation-stats {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+        
+        .automation-actions {
+            display: flex;
+            gap: 8px;
+        }
+        
+        /* Switch Toggle */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 48px;
+            height: 24px;
+        }
+        
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: var(--zinc-700);
+            transition: .3s;
+            border-radius: 24px;
+        }
+        
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .slider {
+            background-color: var(--accent);
+        }
+        
+        input:checked + .slider:before {
+            transform: translateX(24px);
+        }
+        
+        /* Notes */
+        .notes-header {
+            padding: 12px 16px;
+            background: #fef3c7;
+            border-radius: 8px 8px 0 0;
+            border-bottom: 1px solid #fbbf24;
+        }
+        
+        .notes-header h4 {
+            font-size: 14px;
+            font-weight: 600;
+            color: #92400e;
+        }
+        
+        .notes-list {
+            background: #fffbeb;
+            padding: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        
+        .note-item {
+            background: white;
+            border: 1px solid #fbbf24;
+            border-radius: 6px;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+        
+        .note-content {
+            font-size: 14px;
+            color: #78350f;
+            margin-bottom: 6px;
+        }
+        
+        .note-meta {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            color: #92400e;
+        }
+        
+        .note-meta .btn-icon {
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            padding: 2px 6px;
+            opacity: 0.6;
+            transition: opacity .2s;
+        }
+        
+        .note-meta .btn-icon:hover {
+            opacity: 1;
+        }
+        
+        .notes-input {
+            display: flex;
+            gap: 8px;
+            padding: 12px;
+            background: #fffbeb;
+            border-radius: 0 0 8px 8px;
+        }
+        
+        .notes-input input {
+            flex: 1;
+            background: white;
+            border: 1px solid #fbbf24;
+        }
+        
+        /* View Header with Export Button */
+        .view-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        
+        .btn-export {
+            background: var(--green);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all .2s;
+        }
+        
+        .btn-export:hover {
+            background: #10b981;
+            transform: translateY(-1px);
+        }
+        
     </style>
 </head>
 <body>
@@ -1008,6 +1304,10 @@
                 <span class="icon">📢</span>
                 <span>Broadcast</span>
             </div>
+            <div class="nav-item" data-view="automations" onclick="showView('automations')">
+                <span class="icon">⚡</span>
+                <span>Tự động</span>
+            </div>
             <div class="nav-item" data-view="customers" onclick="showView('customers')">
                 <span class="icon">👥</span>
                 <span>Khách hàng</span>
@@ -1044,6 +1344,11 @@
                 <span>Tìm kiếm</span>
                 <span class="cmd-key">Ctrl K</span>
             </button>
+            <button class="theme-toggle" onclick="toggleSearch()" title="Tìm kiếm hội thoại">🔍</button>
+            <div id="searchBox" style="display: none; position: absolute; top: 60px; right: 20px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 12px; padding: 16px; width: 400px; box-shadow: 0 8px 32px rgba(0,0,0,.3); z-index: 100;">
+                <input type="text" id="searchInput" placeholder="Tìm kiếm trong tin nhắn..." style="width: 100%; margin-bottom: 12px;" onkeyup="if(event.key==='Enter') performSearch()">
+                <div id="searchResults" style="max-height: 400px; overflow-y: auto;"></div>
+            </div>
             <div style="position: relative;">
                 <button class="theme-toggle" onclick="toggleNotifications()" id="notifBtn" title="Thông báo">
                     🔔
@@ -1131,6 +1436,16 @@
             <button class="btn btn-primary" onclick="createAgent()">Tạo Agent</button>
             <button class="btn btn-ghost" onclick="closeCreateAgent()">Huỷ</button>
         </div>
+    </div>
+</div>
+
+<!-- TEMPLATE GALLERY -->
+<div class="modal-overlay" id="templateGallery">
+    <div class="modal" style="max-width: 900px;">
+        <button class="modal-close" onclick="closeTemplateGallery()">×</button>
+        <h3>Chọn mẫu Agent</h3>
+        <p class="text-muted" style="margin-bottom: 24px;">Chọn mẫu phù hợp với ngành nghề của bạn</p>
+        <div id="templateGrid" class="template-grid"></div>
     </div>
 </div>
 
@@ -1561,6 +1876,7 @@ function showView(view) {
         'comments': 'Bình luận',
         'posts': 'Bài viết',
         'broadcast': 'Broadcast',
+        'automations': 'Tự động',
         'customers': 'Khách hàng'
     };
     document.getElementById('breadcrumbCurrent').textContent = titles[view] || view;
@@ -1570,6 +1886,10 @@ function showView(view) {
     else if (view === 'comments') renderComments();
     else if (view === 'posts') renderPosts();
     else if (view === 'broadcast') renderBroadcast();
+    else if (view === 'automations') { 
+        if (currentAgent) loadAutomationRules(); 
+        else toast('Vui lòng chọn agent trước', '⚠️');
+    }
     else if (view === 'customers') renderCustomers();
 }
 
@@ -3270,7 +3590,11 @@ async function renderAllConversations() {
 
 // CREATE AGENT
 function openCreateAgent() {
-    document.getElementById('createModal').classList.add('active');
+    if (agentTemplates.length > 0) {
+        showTemplateGallery();
+    } else {
+        document.getElementById('createModal').classList.add('active');
+    }
 }
 function closeCreateAgent() {
     document.getElementById('createModal').classList.remove('active');
@@ -3437,7 +3761,10 @@ async function renderCustomers() {
     c.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
             <h2 style="font-size: 24px; font-weight: 700;">Khách hàng - ${esc(currentAgent.name)}</h2>
-            <input type="search" id="customerSearch" placeholder="Tìm khách hàng..." style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); width: 280px;">
+            <div style="display: flex; gap: 12px; align-items: center;">
+                <button class="btn-export" onclick="exportCustomers()">📥 Xuất CSV</button>
+                <input type="search" id="customerSearch" placeholder="Tìm khách hàng..." style="padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); width: 280px;">
+            </div>
         </div>
         <div id="customerList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">
             ${[1,2,3,4,5,6].map(() => '<div class="skeleton-card" style="height: 140px;"></div>').join('')}
@@ -3611,10 +3938,13 @@ async function renderComments() {
         <div style="margin-bottom: 24px;">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
                 <h2 style="font-size: 24px; font-weight: 700;">📝 Bình luận Facebook</h2>
-                <div id="commentStats" style="display: flex; gap: 16px; font-size: 13px;">
-                    <span>Tổng: <strong id="totalComments">0</strong></span>
-                    <span style="color: var(--orange);">Chưa trả lời: <strong id="unrepliedComments">0</strong></span>
-                    <span style="color: var(--red);">Spam: <strong id="spamComments">0</strong></span>
+                <div style="display: flex; align-items: center; gap: 16px;">
+                    <button class="btn-export" onclick="exportComments()">📥 Xuất CSV</button>
+                    <div id="commentStats" style="display: flex; gap: 16px; font-size: 13px;">
+                        <span>Tổng: <strong id="totalComments">0</strong></span>
+                        <span style="color: var(--orange);">Chưa trả lời: <strong id="unrepliedComments">0</strong></span>
+                        <span style="color: var(--red);">Spam: <strong id="spamComments">0</strong></span>
+                    </div>
                 </div>
             </div>
             
@@ -4309,7 +4639,402 @@ function showToast(message, type = 'info') {
     await loadAgents();
     renderOverview();
     checkOnboarding();
+    requestNotificationPermission();
 })();
+
+// === BATCH 8: POWER FEATURES ===
+
+// NOTIFICATION SOUNDS + DESKTOP PUSH
+let notificationsEnabled = localStorage.getItem('notifications_enabled') !== 'false';
+
+function requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+}
+
+function playNotificationSound() {
+    if (!notificationsEnabled) return;
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.3);
+    } catch(e) {}
+}
+
+function showDesktopNotification(title, body) {
+    if (!notificationsEnabled) return;
+    if (Notification.permission === 'granted' && document.hidden) {
+        new Notification(title, { body, icon: '🤖' });
+    }
+}
+
+function toggleNotifications() {
+    notificationsEnabled = !notificationsEnabled;
+    localStorage.setItem('notifications_enabled', notificationsEnabled);
+    toast(notificationsEnabled ? 'Đã bật thông báo' : 'Đã tắt thông báo', '🔔');
+}
+
+// AGENT TEMPLATES
+let agentTemplates = [];
+
+async function loadTemplates() {
+    try {
+        const data = await api('/api/templates');
+        agentTemplates = data.templates || [];
+    } catch(e) {
+        agentTemplates = [];
+    }
+}
+
+function showTemplateGallery() {
+    const modal = document.getElementById('templateGallery');
+    const grid = document.getElementById('templateGrid');
+    
+    grid.innerHTML = agentTemplates.map(t => `
+        <div class="template-card" onclick="selectTemplate('${t.id}')">
+            <div class="template-icon">${t.icon}</div>
+            <div class="template-name">${esc(t.name)}</div>
+            <div class="template-desc">${esc(t.description)}</div>
+        </div>
+    `).join('') + `
+        <div class="template-card template-custom" onclick="selectTemplate('custom')">
+            <div class="template-icon">✏️</div>
+            <div class="template-name">Tùy chỉnh</div>
+            <div class="template-desc">Tạo từ đầu</div>
+        </div>
+    `;
+    
+    modal.classList.add('active');
+}
+
+function closeTemplateGallery() {
+    document.getElementById('templateGallery').classList.remove('active');
+}
+
+function selectTemplate(templateId) {
+    closeTemplateGallery();
+    
+    if (templateId === 'custom') {
+        openCreateAgent();
+        return;
+    }
+    
+    const template = agentTemplates.find(t => t.id === templateId);
+    if (!template) return;
+    
+    document.getElementById('newAgentName').value = template.name;
+    document.getElementById('newAgentDesc').value = template.description;
+    document.getElementById('newAgentPrompt').value = template.system_prompt;
+    
+    openCreateAgent();
+}
+
+// SEARCH
+let searchResults = [];
+
+async function performSearch() {
+    const query = document.getElementById('searchInput').value.trim();
+    if (!query || !currentAgent) return;
+    
+    try {
+        const data = await api(`/api/agents/${currentAgent.id}/search?q=${encodeURIComponent(query)}`);
+        searchResults = data.results || [];
+        renderSearchResults();
+    } catch(e) {
+        toast('Lỗi tìm kiếm', '❌');
+    }
+}
+
+function renderSearchResults() {
+    const container = document.getElementById('searchResults');
+    
+    if (!searchResults.length) {
+        container.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-secondary)">Không tìm thấy kết quả</div>';
+        return;
+    }
+    
+    container.innerHTML = searchResults.map(r => `
+        <div class="search-result-item" onclick="goToMessage('${r.conversation_id}', '${r.id}')">
+            <div class="search-result-meta">
+                <span>${esc(r.conversations?.customer_name || 'Unknown')}</span>
+                <span class="search-result-channel">${r.conversations?.channel || ''}</span>
+                <span class="search-result-time">${formatTime(r.created_at)}</span>
+            </div>
+            <div class="search-result-content">${r.highlight || esc(r.content)}</div>
+        </div>
+    `).join('');
+}
+
+function toggleSearch() {
+    const box = document.getElementById('searchBox');
+    const isVisible = box.style.display !== 'none';
+    box.style.display = isVisible ? 'none' : 'flex';
+    if (!isVisible) document.getElementById('searchInput').focus();
+}
+
+function goToMessage(convId, msgId) {
+    // Navigate to conversation and scroll to message
+    currentView = 'conversations';
+    renderView();
+    // TODO: implement scroll to specific message
+}
+
+// AUTOMATION RULES
+let automationRules = [];
+
+async function loadAutomationRules() {
+    if (!currentAgent) return;
+    try {
+        const data = await api(`/api/agents/${currentAgent.id}/automations`);
+        automationRules = data.rules || [];
+        renderAutomations();
+    } catch(e) {
+        automationRules = [];
+    }
+}
+
+function renderAutomations() {
+    currentView = 'automations';
+    const main = document.getElementById('mainContent');
+    
+    main.innerHTML = `
+        <div class="view-header">
+            <div>
+                <h2>⚡ Tự động hoá</h2>
+                <p class="text-muted">Thiết lập quy tắc tự động xử lý</p>
+            </div>
+            <button class="btn btn-primary" onclick="openCreateAutomation()">+ Tạo quy tắc mới</button>
+        </div>
+        
+        <div class="automation-list">
+            ${automationRules.length ? automationRules.map(rule => `
+                <div class="automation-card">
+                    <div class="automation-header">
+                        <div>
+                            <h4>${esc(rule.name)}</h4>
+                            <p class="text-muted">${esc(rule.description || '')}</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" ${rule.is_active ? 'checked' : ''} 
+                                   onchange="toggleAutomation('${rule.id}', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                    <div class="automation-details">
+                        <div class="automation-trigger">
+                            <strong>Khi:</strong> ${formatTrigger(rule.trigger_type, rule.trigger_config)}
+                        </div>
+                        <div class="automation-action">
+                            <strong>Thì:</strong> ${formatAction(rule.action_type, rule.action_config)}
+                        </div>
+                        <div class="automation-stats">
+                            Đã chạy: ${rule.execution_count} lần
+                            ${rule.last_executed_at ? `• Lần cuối: ${formatTime(rule.last_executed_at)}` : ''}
+                        </div>
+                    </div>
+                    <div class="automation-actions">
+                        <button class="btn btn-sm btn-ghost" onclick="editAutomation('${rule.id}')">✏️ Sửa</button>
+                        <button class="btn btn-sm btn-ghost text-danger" onclick="deleteAutomation('${rule.id}')">🗑️ Xoá</button>
+                    </div>
+                </div>
+            `).join('') : '<div class="empty-state">Chưa có quy tắc nào</div>'}
+        </div>
+    `;
+}
+
+function formatTrigger(type, config) {
+    const triggers = {
+        'keyword': `Tin nhắn chứa: "${config.keywords || ''}"`,
+        'first_message': 'Khách nhắn tin đầu tiên',
+        'no_reply_timeout': `Không trả lời sau ${config.minutes || 5} phút`,
+        'sentiment_negative': 'Khách không hài lòng',
+        'business_hours': 'Ngoài giờ làm việc',
+        'comment_keyword': `Comment chứa: "${config.keywords || ''}"`
+    };
+    return triggers[type] || type;
+}
+
+function formatAction(type, config) {
+    const actions = {
+        'send_message': `Gửi tin: "${config.message || ''}"`,
+        'add_tag': `Thêm tag: ${config.tag || ''}`,
+        'create_ticket': 'Tạo ticket',
+        'escalate': 'Chuyển cho nhân viên',
+        'send_inbox': 'Gửi tin Inbox',
+        'hide_comment': 'Ẩn comment'
+    };
+    return actions[type] || type;
+}
+
+async function toggleAutomation(ruleId, isActive) {
+    try {
+        await api(`/api/agents/${currentAgent.id}/automations/${ruleId}`, {
+            method: 'PUT',
+            body: JSON.stringify({ is_active: isActive })
+        });
+        toast(isActive ? 'Đã bật quy tắc' : 'Đã tắt quy tắc', '✓');
+        await loadAutomationRules();
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function deleteAutomation(ruleId) {
+    if (!window.confirm('Xoá quy tắc này?')) return;
+    try {
+        await api(`/api/agents/${currentAgent.id}/automations/${ruleId}`, { method: 'DELETE' });
+        toast('Đã xoá quy tắc', '✓');
+        await loadAutomationRules();
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+function openCreateAutomation() {
+    // Simple automation creation (can be enhanced later)
+    const name = prompt('Tên quy tắc:');
+    if (!name) return;
+    
+    const triggerType = prompt('Loại trigger (keyword/first_message/no_reply_timeout):');
+    if (!triggerType) return;
+    
+    const actionType = prompt('Loại action (send_message/create_ticket/escalate):');
+    if (!actionType) return;
+    
+    createAutomationRule(name, triggerType, actionType);
+}
+
+async function createAutomationRule(name, triggerType, actionType) {
+    try {
+        await api(`/api/agents/${currentAgent.id}/automations`, {
+            method: 'POST',
+            body: JSON.stringify({
+                name,
+                trigger_type: triggerType,
+                trigger_config: {},
+                action_type: actionType,
+                action_config: {}
+            })
+        });
+        toast('Đã tạo quy tắc!', '🎉');
+        await loadAutomationRules();
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+// CONVERSATION NOTES
+let conversationNotes = [];
+
+async function loadConversationNotes(convId) {
+    if (!currentAgent) return;
+    try {
+        const data = await api(`/api/agents/${currentAgent.id}/conversations/${convId}/notes`);
+        conversationNotes = data.notes || [];
+        renderConversationNotes();
+    } catch(e) {
+        conversationNotes = [];
+    }
+}
+
+function renderConversationNotes() {
+    const container = document.getElementById('conversationNotes');
+    if (!container) return;
+    
+    container.innerHTML = `
+        <div class="notes-header">
+            <h4>📌 Ghi chú nội bộ</h4>
+        </div>
+        <div class="notes-list">
+            ${conversationNotes.map(note => `
+                <div class="note-item">
+                    <div class="note-content">${esc(note.content)}</div>
+                    <div class="note-meta">
+                        ${formatTime(note.created_at)}
+                        <button class="btn-icon" onclick="deleteNote('${note.id}')">🗑️</button>
+                    </div>
+                </div>
+            `).join('')}
+        </div>
+        <div class="notes-input">
+            <input type="text" id="newNoteInput" placeholder="Thêm ghi chú...">
+            <button class="btn btn-sm btn-primary" onclick="addNote()">Thêm</button>
+        </div>
+    `;
+}
+
+async function addNote() {
+    const input = document.getElementById('newNoteInput');
+    const content = input.value.trim();
+    if (!content || !currentConversation) return;
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}/conversations/${currentConversation.id}/notes`, {
+            method: 'POST',
+            body: JSON.stringify({ content })
+        });
+        input.value = '';
+        await loadConversationNotes(currentConversation.id);
+        toast('Đã thêm ghi chú', '✓');
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function deleteNote(noteId) {
+    if (!currentConversation) return;
+    try {
+        await api(`/api/agents/${currentAgent.id}/conversations/${currentConversation.id}/notes/${noteId}`, {
+            method: 'DELETE'
+        });
+        await loadConversationNotes(currentConversation.id);
+        toast('Đã xoá ghi chú', '✓');
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+// EXPORT FUNCTIONS
+async function exportConversations() {
+    if (!currentAgent) return;
+    try {
+        window.location.href = `${API}/api/agents/${currentAgent.id}/export/conversations?access_token=${accessToken}`;
+        toast('Đang tải xuống...', '📥');
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function exportCustomers() {
+    if (!currentAgent) return;
+    try {
+        window.location.href = `${API}/api/agents/${currentAgent.id}/export/customers?access_token=${accessToken}`;
+        toast('Đang tải xuống...', '📥');
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function exportComments() {
+    if (!currentAgent) return;
+    try {
+        window.location.href = `${API}/api/agents/${currentAgent.id}/export/comments?access_token=${accessToken}`;
+        toast('Đang tải xuống...', '📥');
+    } catch(e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+// Load templates on init
+loadTemplates();
 
 // Mobile
 if (window.innerWidth <= 768) {

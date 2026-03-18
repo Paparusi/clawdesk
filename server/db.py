@@ -806,3 +806,216 @@ def get_top_commenters(agent_id: str, limit: int = 10) -> List[Dict[str, Any]]:
     # Sort and return top
     sorted_commenters = sorted(commenter_counts.values(), key=lambda x: x["comment_count"], reverse=True)
     return sorted_commenters[:limit]
+
+
+# === MESSAGE SEARCH ===
+
+def search_messages(agent_id: str, query: str, limit: int = 20) -> List[Dict[str, Any]]:
+    """Search messages using PostgreSQL full-text search"""
+    sb = get_supabase()
+    
+    # Use simple ILIKE search for now (can upgrade to ts_vector later if needed)
+    result = sb.rpc("search_messages_for_agent", {
+        "p_agent_id": agent_id,
+        "p_query": query,
+        "p_limit": limit
+    }).execute()
+    
+    if result.data:
+        return result.data
+    
+    # Fallback to basic query if RPC doesn't exist
+    messages = sb.table("messages").select(
+        "*, conversations!inner(id, customer_name, channel, agent_id)"
+    ).eq("conversations.agent_id", agent_id).ilike("content", f"%{query}%").order(
+        "created_at", desc=True
+    ).limit(limit).execute()
+    
+    return messages.data if messages.data else []
+
+
+# === AUTOMATION RULES ===
+
+def create_automation_rule(agent_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+    """Create a new automation rule"""
+    sb = get_supabase()
+    
+    rule_data = {
+        "agent_id": agent_id,
+        "name": data["name"],
+        "description": data.get("description", ""),
+        "trigger_type": data["trigger_type"],
+        "trigger_config": data.get("trigger_config", {}),
+        "action_type": data["action_type"],
+        "action_config": data.get("action_config", {}),
+        "is_active": data.get("is_active", True),
+        "priority": data.get("priority", 0)
+    }
+    
+    result = sb.table("automation_rules").insert(rule_data).execute()
+    return result.data[0] if result.data else None
+
+
+def list_automation_rules(agent_id: str, active_only: bool = False) -> List[Dict[str, Any]]:
+    """List automation rules for an agent"""
+    sb = get_supabase()
+    
+    query = sb.table("automation_rules").select("*").eq("agent_id", agent_id)
+    
+    if active_only:
+        query = query.eq("is_active", True)
+    
+    query = query.order("priority", desc=True).order("created_at", desc=False)
+    
+    result = query.execute()
+    return result.data if result.data else []
+
+
+def get_automation_rule(rule_id: str) -> Optional[Dict[str, Any]]:
+    """Get a single automation rule"""
+    sb = get_supabase()
+    result = sb.table("automation_rules").select("*").eq("id", rule_id).execute()
+    return result.data[0] if result.data else None
+
+
+def update_automation_rule(rule_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Update an automation rule"""
+    sb = get_supabase()
+    result = sb.table("automation_rules").update(data).eq("id", rule_id).execute()
+    return result.data[0] if result.data else None
+
+
+def delete_automation_rule(rule_id: str) -> bool:
+    """Delete an automation rule"""
+    sb = get_supabase()
+    result = sb.table("automation_rules").delete().eq("id", rule_id).execute()
+    return bool(result.data)
+
+
+def increment_rule_execution(rule_id: str) -> None:
+    """Increment execution count for a rule"""
+    sb = get_supabase()
+    rule = get_automation_rule(rule_id)
+    if rule:
+        sb.table("automation_rules").update({
+            "execution_count": rule["execution_count"] + 1,
+            "last_executed_at": datetime.utcnow().isoformat()
+        }).eq("id", rule_id).execute()
+
+
+# === CONVERSATION NOTES ===
+
+def create_conversation_note(conversation_id: str, user_id: str, content: str) -> Dict[str, Any]:
+    """Add a note to a conversation"""
+    sb = get_supabase()
+    
+    note_data = {
+        "conversation_id": conversation_id,
+        "user_id": user_id,
+        "content": content
+    }
+    
+    result = sb.table("conversation_notes").insert(note_data).execute()
+    return result.data[0] if result.data else None
+
+
+def list_conversation_notes(conversation_id: str) -> List[Dict[str, Any]]:
+    """Get all notes for a conversation"""
+    sb = get_supabase()
+    
+    result = sb.table("conversation_notes").select("*").eq(
+        "conversation_id", conversation_id
+    ).order("created_at", desc=False).execute()
+    
+    return result.data if result.data else []
+
+
+def delete_conversation_note(note_id: str) -> bool:
+    """Delete a conversation note"""
+    sb = get_supabase()
+    result = sb.table("conversation_notes").delete().eq("id", note_id).execute()
+    return bool(result.data)
+
+
+# === EXPORT HELPERS ===
+
+def get_conversations_for_export(agent_id: str) -> List[Dict[str, Any]]:
+    """Get all conversations with summary data for CSV export"""
+    sb = get_supabase()
+    
+    conversations = list_conversations(agent_id, limit=10000)
+    
+    export_data = []
+    for conv in conversations:
+        # Get message count
+        messages = sb.table("messages").select("id", count="exact").eq(
+            "conversation_id", conv["id"]
+        ).execute()
+        
+        message_count = messages.count if messages.count else 0
+        
+        # Get first and last message
+        first_msg = sb.table("messages").select("content, created_at").eq(
+            "conversation_id", conv["id"]
+        ).order("created_at", desc=False).limit(1).execute()
+        
+        last_msg = sb.table("messages").select("content, created_at").eq(
+            "conversation_id", conv["id"]
+        ).order("created_at", desc=True).limit(1).execute()
+        
+        export_data.append({
+            "customer_name": conv.get("customer_name", ""),
+            "channel": conv.get("channel", ""),
+            "status": conv.get("status", ""),
+            "mode": conv.get("mode", ""),
+            "message_count": message_count,
+            "first_message": first_msg.data[0]["content"] if first_msg.data else "",
+            "first_message_time": first_msg.data[0]["created_at"] if first_msg.data else "",
+            "last_message": last_msg.data[0]["content"] if last_msg.data else "",
+            "last_message_time": last_msg.data[0]["created_at"] if last_msg.data else "",
+            "created_at": conv.get("created_at", "")
+        })
+    
+    return export_data
+
+
+def get_customers_for_export(agent_id: str) -> List[Dict[str, Any]]:
+    """Get all customers for CSV export"""
+    customers = list_customers(agent_id, limit=10000)
+    
+    export_data = []
+    for customer in customers:
+        export_data.append({
+            "name": customer.get("name", ""),
+            "email": customer.get("email", ""),
+            "phone": customer.get("phone", ""),
+            "channel": customer.get("channel", ""),
+            "tags": ", ".join(customer.get("tags", [])),
+            "conversation_count": customer.get("conversation_count", 0),
+            "last_contact": customer.get("last_contact", ""),
+            "created_at": customer.get("created_at", "")
+        })
+    
+    return export_data
+
+
+def get_comments_for_export(agent_id: str) -> List[Dict[str, Any]]:
+    """Get all Facebook comments for CSV export"""
+    comments = list_facebook_comments(agent_id, limit=10000)
+    
+    export_data = []
+    for comment in comments:
+        export_data.append({
+            "post_id": comment.get("post_id", ""),
+            "comment_id": comment.get("comment_id", ""),
+            "sender_name": comment.get("sender_name", ""),
+            "sender_id": comment.get("sender_id", ""),
+            "message": comment.get("message", ""),
+            "sentiment": comment.get("sentiment", ""),
+            "is_spam": comment.get("is_spam", False),
+            "is_hidden": comment.get("is_hidden", False),
+            "ai_replied": "Yes" if comment.get("ai_replied_at") else "No",
+            "created_at": comment.get("created_at", "")
+        })
+    
+    return export_data

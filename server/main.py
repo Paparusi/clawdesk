@@ -3147,6 +3147,382 @@ async def get_stats_endpoint(user=Depends(get_current_user)):
         raise HTTPException(500, f"Failed to get stats: {str(e)}")
 
 
+# === AGENT TEMPLATES ===
+
+@app.get("/api/templates")
+async def get_templates():
+    """Return pre-built agent templates for Vietnamese businesses"""
+    templates = [
+        {
+            "id": "fashion",
+            "name": "🛍️ Shop thời trang",
+            "description": "Tư vấn size, chất liệu, phối đồ. Xử lý đổi trả.",
+            "system_prompt": "Bạn là nhân viên tư vấn thời trang online. Bạn biết rõ về size, chất liệu, cách phối đồ. Luôn hỏi khách về chiều cao, cân nặng để tư vấn size phù hợp. Khi khách hỏi giá, trả lời chính xác và gợi ý thêm combo/set đồ. Giọng điệu thân thiện, trẻ trung, dùng emoji vừa phải. Khi khách muốn đổi trả, hướng dẫn quy trình rõ ràng.",
+            "tools": ["search_knowledge", "collect_customer_info", "create_ticket"],
+            "category": "retail",
+            "icon": "👗",
+            "knowledge_suggestions": ["Bảng size", "Chính sách đổi trả", "Bảng giá sản phẩm", "FAQ vận chuyển"]
+        },
+        {
+            "id": "cosmetics",
+            "name": "💄 Shop mỹ phẩm",
+            "description": "Tư vấn da, sản phẩm phù hợp, cách sử dụng.",
+            "system_prompt": "Bạn là chuyên gia tư vấn mỹ phẩm và chăm sóc da. Hỏi khách về loại da (dầu/khô/hỗn hợp/nhạy cảm), vấn đề da đang gặp, ngân sách. Gợi ý sản phẩm phù hợp từ danh mục shop. Luôn nhắc test patch trước khi dùng sản phẩm mới. Tone nhẹ nhàng, chuyên nghiệp, dùng emoji phù hợp 💕",
+            "tools": ["search_knowledge", "collect_customer_info", "send_faq_answer"],
+            "category": "beauty",
+            "icon": "💄",
+            "knowledge_suggestions": ["Danh mục sản phẩm", "Hướng dẫn skincare routine", "Bảng giá", "Review khách hàng"]
+        },
+        {
+            "id": "food",
+            "name": "🍜 Quán ăn / F&B",
+            "description": "Nhận order, tư vấn menu, xử lý delivery.",
+            "system_prompt": "Bạn là nhân viên order online của quán. Giúp khách xem menu, đặt món, tính tiền. Hỏi địa chỉ giao hàng và thời gian mong muốn. Gợi ý combo và món bán chạy. Thông báo thời gian giao hàng dự kiến. Tone vui vẻ, nhanh nhẹn. Khi khách khiếu nại, xin lỗi chân thành và tạo ticket.",
+            "tools": ["search_knowledge", "collect_customer_info", "create_ticket", "escalate_to_human"],
+            "category": "food",
+            "icon": "🍜",
+            "knowledge_suggestions": ["Menu và giá", "Khu vực giao hàng", "Giờ mở cửa", "Chương trình khuyến mãi"]
+        },
+        {
+            "id": "realestate",
+            "name": "🏠 Bất động sản",
+            "description": "Tư vấn dự án, giá, pháp lý, lịch xem nhà.",
+            "system_prompt": "Bạn là chuyên viên tư vấn bất động sản. Hỏi khách về nhu cầu (mua/thuê), ngân sách, khu vực mong muốn, diện tích. Giới thiệu dự án phù hợp với đầy đủ thông tin: vị trí, giá, pháp lý, tiện ích. Đặt lịch xem nhà khi khách quan tâm. Tone chuyên nghiệp, đáng tin cậy.",
+            "tools": ["search_knowledge", "collect_customer_info", "create_ticket", "escalate_to_human"],
+            "category": "realestate",
+            "icon": "🏠",
+            "knowledge_suggestions": ["Danh sách dự án", "Bảng giá", "Chính sách thanh toán", "Pháp lý dự án"]
+        },
+        {
+            "id": "education",
+            "name": "📚 Trung tâm đào tạo",
+            "description": "Tư vấn khóa học, lịch học, học phí, đăng ký.",
+            "system_prompt": "Bạn là tư vấn viên trung tâm đào tạo. Tìm hiểu nhu cầu học tập, trình độ hiện tại, thời gian rảnh của khách. Gợi ý khóa học phù hợp với lịch học, học phí, ưu đãi. Hỗ trợ đăng ký online. Tone nhiệt tình, động viên, chuyên nghiệp.",
+            "tools": ["search_knowledge", "collect_customer_info", "send_faq_answer", "create_ticket"],
+            "category": "education",
+            "icon": "📚",
+            "knowledge_suggestions": ["Danh mục khóa học", "Lịch khai giảng", "Học phí & ưu đãi", "Đội ngũ giảng viên"]
+        },
+        {
+            "id": "health",
+            "name": "🏥 Phòng khám / Spa",
+            "description": "Đặt lịch hẹn, tư vấn dịch vụ, giá.",
+            "system_prompt": "Bạn là lễ tân online của phòng khám/spa. Giúp khách đặt lịch hẹn, tìm hiểu dịch vụ, giá cả. Hỏi triệu chứng/nhu cầu để gợi ý dịch vụ phù hợp. KHÔNG đưa ra chẩn đoán y khoa — luôn khuyên khách đến khám trực tiếp. Tone nhẹ nhàng, chuyên nghiệp, quan tâm.",
+            "tools": ["search_knowledge", "collect_customer_info", "create_ticket", "check_business_hours"],
+            "category": "health",
+            "icon": "🏥",
+            "knowledge_suggestions": ["Danh mục dịch vụ", "Bảng giá", "Lịch bác sĩ", "Quy trình khám"]
+        },
+        {
+            "id": "electronics",
+            "name": "📱 Shop điện tử",
+            "description": "Tư vấn spec, so sánh sản phẩm, bảo hành.",
+            "system_prompt": "Bạn là chuyên viên tư vấn sản phẩm công nghệ. Hỏi khách về nhu cầu sử dụng, ngân sách để gợi ý sản phẩm phù hợp. So sánh chi tiết specs giữa các model. Giải thích dễ hiểu cho người không rành tech. Hướng dẫn bảo hành, đổi trả rõ ràng.",
+            "tools": ["search_knowledge", "collect_customer_info", "send_faq_answer", "create_ticket"],
+            "category": "tech",
+            "icon": "📱",
+            "knowledge_suggestions": ["Danh mục sản phẩm & specs", "Bảng giá", "Chính sách bảo hành", "So sánh sản phẩm hot"]
+        },
+        {
+            "id": "general",
+            "name": "🤖 Tổng quát",
+            "description": "Agent CSKH đa năng, phù hợp mọi ngành.",
+            "system_prompt": "Bạn là trợ lý AI chăm sóc khách hàng. Trả lời thân thiện, chính xác, ngắn gọn. Khi không biết câu trả lời, hãy tìm trong knowledge base. Nếu vẫn không có, xin lỗi và chuyển cho nhân viên hỗ trợ. Luôn hỏi thêm thông tin khi câu hỏi chưa rõ ràng.",
+            "tools": ["search_knowledge", "escalate_to_human", "collect_customer_info", "create_ticket", "send_faq_answer"],
+            "category": "general",
+            "icon": "🤖",
+            "knowledge_suggestions": ["FAQ", "Thông tin sản phẩm/dịch vụ", "Chính sách", "Liên hệ"]
+        }
+    ]
+    return {"templates": templates}
+
+
+# === MESSAGE SEARCH ===
+
+@app.get("/api/agents/{agent_id}/search")
+async def search_conversations(
+    agent_id: str,
+    q: str = Query(..., min_length=1),
+    user=Depends(get_current_user)
+):
+    """Full-text search across all messages for an agent"""
+    from server.db import search_messages
+    
+    # Verify agent belongs to user
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
+        raise HTTPException(404, "Agent not found")
+    
+    results = search_messages(agent_id, q, limit=50)
+    
+    return {
+        "query": q,
+        "results": results,
+        "count": len(results)
+    }
+
+
+# === AUTOMATION RULES ===
+
+@app.get("/api/agents/{agent_id}/automations")
+async def list_automations(agent_id: str, user=Depends(get_current_user)):
+    """List automation rules for an agent"""
+    from server.db import list_automation_rules
+    
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
+        raise HTTPException(404, "Agent not found")
+    
+    rules = list_automation_rules(agent_id)
+    return {"rules": rules}
+
+
+@app.post("/api/agents/{agent_id}/automations")
+async def create_automation(
+    agent_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user)
+):
+    """Create a new automation rule"""
+    from server.db import create_automation_rule
+    
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
+        raise HTTPException(404, "Agent not found")
+    
+    rule = create_automation_rule(agent_id, body)
+    return {"rule": rule}
+
+
+@app.get("/api/agents/{agent_id}/automations/{rule_id}")
+async def get_automation(
+    agent_id: str,
+    rule_id: str,
+    user=Depends(get_current_user)
+):
+    """Get a single automation rule"""
+    from server.db import get_automation_rule
+    
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
+        raise HTTPException(404, "Agent not found")
+    
+    rule = get_automation_rule(rule_id)
+    if not rule or rule["agent_id"] != agent_id:
+        raise HTTPException(404, "Rule not found")
+    
+    return {"rule": rule}
+
+
+@app.put("/api/agents/{agent_id}/automations/{rule_id}")
+async def update_automation(
+    agent_id: str,
+    rule_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user)
+):
+    """Update an automation rule"""
+    from server.db import get_automation_rule, update_automation_rule
+    
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
+        raise HTTPException(404, "Agent not found")
+    
+    rule = get_automation_rule(rule_id)
+    if not rule or rule["agent_id"] != agent_id:
+        raise HTTPException(404, "Rule not found")
+    
+    updated_rule = update_automation_rule(rule_id, body)
+    return {"rule": updated_rule}
+
+
+@app.delete("/api/agents/{agent_id}/automations/{rule_id}")
+async def delete_automation(
+    agent_id: str,
+    rule_id: str,
+    user=Depends(get_current_user)
+):
+    """Delete an automation rule"""
+    from server.db import get_automation_rule, delete_automation_rule
+    
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
+        raise HTTPException(404, "Agent not found")
+    
+    rule = get_automation_rule(rule_id)
+    if not rule or rule["agent_id"] != agent_id:
+        raise HTTPException(404, "Rule not found")
+    
+    success = delete_automation_rule(rule_id)
+    return {"success": success}
+
+
+# === CONVERSATION NOTES ===
+
+@app.get("/api/agents/{agent_id}/conversations/{conv_id}/notes")
+async def get_notes(
+    agent_id: str,
+    conv_id: str,
+    user=Depends(get_current_user)
+):
+    """Get internal notes for a conversation"""
+    from server.db import list_conversation_notes
+    
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
+        raise HTTPException(404, "Agent not found")
+    
+    notes = list_conversation_notes(conv_id)
+    return {"notes": notes}
+
+
+@app.post("/api/agents/{agent_id}/conversations/{conv_id}/notes")
+async def add_note(
+    agent_id: str,
+    conv_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user)
+):
+    """Add internal note to conversation (not visible to customer)"""
+    from server.db import create_conversation_note
+    
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
+        raise HTTPException(404, "Agent not found")
+    
+    content = body.get("content", "").strip()
+    if not content:
+        raise HTTPException(400, "Note content required")
+    
+    note = create_conversation_note(conv_id, user["id"], content)
+    return {"note": note}
+
+
+@app.delete("/api/agents/{agent_id}/conversations/{conv_id}/notes/{note_id}")
+async def delete_note(
+    agent_id: str,
+    conv_id: str,
+    note_id: str,
+    user=Depends(get_current_user)
+):
+    """Delete a conversation note"""
+    from server.db import delete_conversation_note
+    
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
+        raise HTTPException(404, "Agent not found")
+    
+    success = delete_conversation_note(note_id)
+    return {"success": success}
+
+
+# === DATA EXPORT ===
+
+@app.get("/api/agents/{agent_id}/export/conversations")
+async def export_conversations(
+    agent_id: str,
+    format: str = "csv",
+    user=Depends(get_current_user)
+):
+    """Export all conversations as CSV"""
+    from server.db import get_conversations_for_export
+    import csv
+    from io import StringIO
+    
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
+        raise HTTPException(404, "Agent not found")
+    
+    data = get_conversations_for_export(agent_id)
+    
+    # Generate CSV
+    output = StringIO()
+    if data:
+        writer = csv.DictWriter(output, fieldnames=data[0].keys())
+        writer.writeheader()
+        writer.writerows(data)
+    
+    csv_content = output.getvalue()
+    
+    return StreamingResponse(
+        iter([csv_content]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=conversations_{agent_id}_{datetime.now().strftime('%Y%m%d')}.csv"
+        }
+    )
+
+
+@app.get("/api/agents/{agent_id}/export/customers")
+async def export_customers(
+    agent_id: str,
+    format: str = "csv",
+    user=Depends(get_current_user)
+):
+    """Export customer list as CSV"""
+    from server.db import get_customers_for_export
+    import csv
+    from io import StringIO
+    
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
+        raise HTTPException(404, "Agent not found")
+    
+    data = get_customers_for_export(agent_id)
+    
+    # Generate CSV
+    output = StringIO()
+    if data:
+        writer = csv.DictWriter(output, fieldnames=data[0].keys())
+        writer.writeheader()
+        writer.writerows(data)
+    
+    csv_content = output.getvalue()
+    
+    return StreamingResponse(
+        iter([csv_content]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=customers_{agent_id}_{datetime.now().strftime('%Y%m%d')}.csv"
+        }
+    )
+
+
+@app.get("/api/agents/{agent_id}/export/comments")
+async def export_comments(
+    agent_id: str,
+    format: str = "csv",
+    user=Depends(get_current_user)
+):
+    """Export Facebook comments as CSV"""
+    from server.db import get_comments_for_export
+    import csv
+    from io import StringIO
+    
+    agent = get_agent(agent_id)
+    if not agent or agent["user_id"] != user["id"]:
+        raise HTTPException(404, "Agent not found")
+    
+    data = get_comments_for_export(agent_id)
+    
+    # Generate CSV
+    output = StringIO()
+    if data:
+        writer = csv.DictWriter(output, fieldnames=data[0].keys())
+        writer.writeheader()
+        writer.writerows(data)
+    
+    csv_content = output.getvalue()
+    
+    return StreamingResponse(
+        iter([csv_content]),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=comments_{agent_id}_{datetime.now().strftime('%Y%m%d')}.csv"
+        }
+    )
+
+
 # === HEALTH ===
 
 @app.get("/api/health")
