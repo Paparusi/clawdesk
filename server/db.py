@@ -815,23 +815,53 @@ def search_messages(agent_id: str, query: str, limit: int = 20) -> List[Dict[str
     sb = get_supabase()
     
     # Use simple ILIKE search for now (can upgrade to ts_vector later if needed)
-    result = sb.rpc("search_messages_for_agent", {
-        "p_agent_id": agent_id,
-        "p_query": query,
-        "p_limit": limit
-    }).execute()
-    
-    if result.data:
-        return result.data
-    
-    # Fallback to basic query if RPC doesn't exist
-    messages = sb.table("messages").select(
-        "*, conversations!inner(id, customer_name, channel, agent_id)"
-    ).eq("conversations.agent_id", agent_id).ilike("content", f"%{query}%").order(
-        "created_at", desc=True
-    ).limit(limit).execute()
-    
-    return messages.data if messages.data else []
+    try:
+        # Get conversation IDs for this agent first
+        convs = sb.table("conversations").select("id").eq("agent_id", agent_id).execute()
+        if not convs.data:
+            return []
+        
+        conv_ids = [c["id"] for c in convs.data]
+        
+        # Search messages in those conversations
+        messages = sb.table("messages").select(
+            "id, content, role, created_at, conversation_id"
+        ).in_("conversation_id", conv_ids).ilike(
+            "content", f"%{query}%"
+        ).order("created_at", desc=True).limit(limit).execute()
+        
+        if not messages.data:
+            return []
+        
+        # Enrich with conversation info
+        conv_map = {}
+        for c in convs.data:
+            conv_map[c["id"]] = c
+        
+        # Get full conv info
+        convs_full = sb.table("conversations").select(
+            "id, customer_name, channel"
+        ).eq("agent_id", agent_id).execute()
+        conv_map = {c["id"]: c for c in (convs_full.data or [])}
+        
+        results = []
+        for m in messages.data:
+            conv = conv_map.get(m["conversation_id"], {})
+            results.append({
+                "id": m["id"],
+                "content": m["content"],
+                "role": m["role"],
+                "created_at": m["created_at"],
+                "conversation_id": m["conversation_id"],
+                "customer_name": conv.get("customer_name", ""),
+                "channel": conv.get("channel", ""),
+                "highlight": m["content"]
+            })
+        
+        return results
+    except Exception as e:
+        print(f"Search error: {e}")
+        return []
 
 
 # === AUTOMATION RULES ===
