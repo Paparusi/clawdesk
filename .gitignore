@@ -6,7 +6,6 @@ data/
 dist/
 build/
 .venv/
-database/
 *.db
 *.sqlite
 
