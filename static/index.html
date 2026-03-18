@@ -607,7 +607,7 @@
     </div>
     <div class="hero-content">
         <div class="badge">🚀 Nền tảng AI Agent thế hệ mới</div>
-        <h1><span class="gradient"><span class="typewriter" id="typewriter">AI Agent quản lý Fanpage & CSKH</span></span></h1>
+        <h1><span class="gradient">AI Agent quản lý Fanpage</span><br>& CSKH</h1>
         <p>Tự động trả lời tin nhắn, comment, tạo bài viết, gửi broadcast — tất cả bằng AI. Dùng API key của bạn, kiến thức của bạn, thương hiệu của bạn.</p>
         <div class="hero-btns">
             <button class="btn btn-primary" onclick="openModal('register')"><span>Bắt đầu miễn phí →</span></button>
@@ -948,18 +948,7 @@ const API = '';
 let authMode = 'login';
 let isAnnual = false;
 
-// Typewriter effect
-const typewriterEl = document.getElementById('typewriter');
-const text = 'AI Agent quản lý Fanpage & CSKH';
-let charIndex = 0;
-function typeWriter() {
-    if (charIndex < text.length) {
-        typewriterEl.textContent = text.substring(0, charIndex + 1);
-        charIndex++;
-        setTimeout(typeWriter, 100);
-    }
-}
-setTimeout(typeWriter, 1000);
+// Typewriter removed - static title for better visibility
 
 // Scroll animations
 const revealElements = document.querySelectorAll('.reveal');
