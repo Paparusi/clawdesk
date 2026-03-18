@@ -53,19 +53,36 @@ from server.tools import get_tool_definitions, execute_tool
 AGENT_PRICE_VND = 100000  # 100k VND per additional agent per month
 FREE_AGENTS = 1  # First agent is free
 
-# Per-agent features (all agents get everything)
-AGENT_FEATURES = {
+# Free agent features (webchat only)
+FREE_AGENT_FEATURES = {
+    "channels": ["webchat"],
+    "knowledge_items": 10,
+    "products": 50,
+    "automation_rules": 2,
+    "broadcast": False,
+    "export": False,
+    "remove_branding": False,
+    "comment_auto_reply": False,
+    "ai_post_generation": 0,
+    "ai_messages_per_agent": 100,
+}
+
+# Paid agent features (full social channels)
+PAID_AGENT_FEATURES = {
     "channels": ["webchat", "facebook", "telegram", "zalo"],
-    "knowledge_items": -1,  # unlimited
+    "knowledge_items": -1,
     "products": -1,
     "automation_rules": -1,
     "broadcast": True,
     "export": True,
-    "remove_branding": False,  # free with branding, paid agents no branding
+    "remove_branding": True,
     "comment_auto_reply": True,
     "ai_post_generation": -1,
-    "ai_messages_per_agent": 500,  # 500 AI messages per agent per month
+    "ai_messages_per_agent": 500,
 }
+
+# Backward compat
+AGENT_FEATURES = PAID_AGENT_FEATURES
 
 # Legacy PLAN_LIMITS for backward compatibility
 PLAN_LIMITS = {
