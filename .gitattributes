@@ -1,0 +1,4 @@
+# Fix GitHub language detection — ClawDesk is a Python project
+static/*.html linguist-vendored
+static/*.js linguist-vendored
+docs/* linguist-documentation
