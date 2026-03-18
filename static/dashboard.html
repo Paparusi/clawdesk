@@ -3609,7 +3609,11 @@ async function renderAllConversations() {
 
 // CREATE AGENT
 function openCreateAgent(skipTemplates = false) {
-    if (!skipTemplates && agentTemplates.length > 0) {
+    // Close any open modals first
+    document.getElementById('templateGallery').classList.remove('active');
+    document.getElementById('createModal').classList.remove('active');
+    
+    if (!skipTemplates && agentTemplates && agentTemplates.length > 0) {
         showTemplateGallery();
     } else {
         document.getElementById('createModal').classList.add('active');
@@ -5880,6 +5884,9 @@ if (window.innerWidth <= 768) {
 // Modal close
 document.getElementById('createModal').addEventListener('click', e => {
     if(e.target===e.currentTarget) closeCreateAgent();
+});
+document.getElementById('templateGallery').addEventListener('click', e => {
+    if(e.target===e.currentTarget) closeTemplateGallery();
 });
 document.getElementById('confirmModal').addEventListener('click', e => {
     if(e.target===e.currentTarget) closeConfirm();
