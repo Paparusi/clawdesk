@@ -85,7 +85,7 @@ BEGIN
         'positive_count', COUNT(*) FILTER (WHERE sentiment = 'positive'),
         'neutral_count', COUNT(*) FILTER (WHERE sentiment = 'neutral'),
         'negative_count', COUNT(*) FILTER (WHERE sentiment = 'negative'),
-        'avg_reply_time_seconds', EXTRACT(EPOCH FROM AVG(ai_replied_at - created_at)) FILTER (WHERE ai_replied_at IS NOT NULL)
+        'avg_reply_time_seconds', EXTRACT(EPOCH FROM AVG(ai_replied_at - created_at) FILTER (WHERE ai_replied_at IS NOT NULL))
     )
     INTO result
     FROM facebook_comments
