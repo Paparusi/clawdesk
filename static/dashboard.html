@@ -763,13 +763,13 @@
             from { opacity: 0; transform: translateY(40px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        .modal {
+        .modal-v2 {
             display: none; position: fixed; inset: 0;
             background: rgba(0,0,0,.7); backdrop-filter: blur(8px);
             z-index: 200; align-items: center; justify-content: center;
             padding: 20px;
         }
-        .modal.active {
+        .modal-v2.active {
             display: flex; animation: fadeIn .3s;
         }
         .modal-content {
@@ -4205,7 +4205,7 @@ async function renderPosts() {
         </div>
         
         <!-- Create Post Modal -->
-        <div id="createPostModal" class="modal">
+        <div id="createPostModal" class="modal-v2">
             <div class="modal-content" style="max-width: 600px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
                     <h3 style="font-size: 20px; font-weight: 700;">Tạo bài viết mới</h3>
