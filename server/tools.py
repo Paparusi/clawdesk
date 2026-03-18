@@ -196,6 +196,73 @@ def get_tool_definitions(provider: str, tools_enabled: List[str]) -> List[Dict[s
                 }
             }
         },
+        
+        "create_order": {
+            "name": "create_order",
+            "description": "Tạo đơn hàng mới khi khách xác nhận muốn mua. Thu thập tên, số điện thoại, địa chỉ, sản phẩm, số lượng.",
+            "parameters": {
+                "customer_name": {
+                    "type": "string",
+                    "description": "Tên khách hàng",
+                    "required": True
+                },
+                "customer_phone": {
+                    "type": "string",
+                    "description": "Số điện thoại khách hàng",
+                    "required": False
+                },
+                "customer_address": {
+                    "type": "string",
+                    "description": "Địa chỉ giao hàng",
+                    "required": False
+                },
+                "items": {
+                    "type": "array",
+                    "description": "Danh sách sản phẩm [{'product_name': 'Tên SP', 'quantity': 1, 'price': 100000}]",
+                    "required": True,
+                    "items": {"type": "object"}
+                },
+                "notes": {
+                    "type": "string",
+                    "description": "Ghi chú đơn hàng",
+                    "required": False
+                }
+            }
+        },
+        
+        "check_order_status": {
+            "name": "check_order_status",
+            "description": "Kiểm tra trạng thái đơn hàng của khách. Sử dụng khi khách hỏi 'đơn hàng của tôi đến đâu rồi?'",
+            "parameters": {
+                "customer_phone": {
+                    "type": "string",
+                    "description": "Số điện thoại khách hàng để tra cứu đơn",
+                    "required": True
+                }
+            }
+        },
+        
+        "search_products": {
+            "name": "search_products",
+            "description": "Tìm sản phẩm theo tên, danh mục hoặc từ khóa. Dùng khi khách hỏi về sản phẩm, giá, còn hàng không.",
+            "parameters": {
+                "query": {
+                    "type": "string",
+                    "description": "Từ khóa tìm kiếm sản phẩm",
+                    "required": True
+                },
+                "category": {
+                    "type": "string",
+                    "description": "Danh mục sản phẩm (tùy chọn)",
+                    "required": False
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Số lượng kết quả tối đa (mặc định: 5)",
+                    "required": False
+                }
+            }
+        },
     }
     
     # Filter enabled tools
@@ -354,6 +421,15 @@ async def execute_tool(
         
         elif tool_name == "analyze_comment_sentiment":
             return await _execute_analyze_sentiment(tool_args)
+        
+        elif tool_name == "create_order":
+            return await _execute_create_order(tool_args, agent["id"], conversation_id, db_functions)
+        
+        elif tool_name == "check_order_status":
+            return await _execute_check_order_status(tool_args, agent["id"], db_functions)
+        
+        elif tool_name == "search_products":
+            return await _execute_search_products(tool_args, agent["id"], db_functions)
         
         else:
             return {"success": False, "error": f"Unknown tool: {tool_name}"}
@@ -807,3 +883,170 @@ async def _execute_analyze_sentiment(args: Dict[str, Any]) -> Dict[str, Any]:
         "positive_signals": pos_count,
         "negative_signals": neg_count
     }
+
+
+async def _execute_create_order(args: Dict[str, Any], agent_id: str, conv_id: str, db: Dict) -> Dict[str, Any]:
+    """Execute create order"""
+    try:
+        sb = db["get_supabase"]()
+        
+        # Calculate totals
+        items = args.get("items", [])
+        if not items:
+            return {"success": False, "error": "Items are required"}
+        
+        subtotal = sum(item.get("price", 0) * item.get("quantity", 1) for item in items)
+        
+        order_data = {
+            "agent_id": agent_id,
+            "conversation_id": conv_id,
+            "customer_name": args.get("customer_name", ""),
+            "customer_phone": args.get("customer_phone", ""),
+            "customer_address": args.get("customer_address", ""),
+            "items": json.dumps(items),
+            "subtotal": subtotal,
+            "total": subtotal,
+            "notes": args.get("notes", ""),
+            "status": "new",
+            "payment_status": "unpaid",
+        }
+        
+        result = sb.table("orders").insert(order_data).execute()
+        
+        if not result.data:
+            return {"success": False, "error": "Failed to create order"}
+        
+        order = result.data[0]
+        order_id_short = order["id"][:8]
+        
+        # Format items list
+        items_text = "\n".join([
+            f"- {item.get('product_name', 'Unknown')} x{item.get('quantity', 1)}: {item.get('price', 0):,}đ"
+            for item in items
+        ])
+        
+        return {
+            "success": True,
+            "result": f"✅ Đã tạo đơn hàng #{order_id_short}\n\n{items_text}\n\nTổng cộng: {subtotal:,}đ\n\nChúng tôi sẽ liên hệ xác nhận và giao hàng sớm nhất!",
+            "order_id": order["id"]
+        }
+    
+    except Exception as e:
+        return {"success": False, "error": f"Failed to create order: {str(e)}"}
+
+
+async def _execute_check_order_status(args: Dict[str, Any], agent_id: str, db: Dict) -> Dict[str, Any]:
+    """Execute check order status"""
+    try:
+        sb = db["get_supabase"]()
+        
+        customer_phone = args.get("customer_phone", "")
+        if not customer_phone:
+            return {"success": False, "error": "Customer phone is required"}
+        
+        # Find orders by phone
+        result = sb.table("orders").select("*").eq("agent_id", agent_id).eq("customer_phone", customer_phone).order("created_at", desc=True).execute()
+        
+        if not result.data:
+            return {
+                "success": True,
+                "result": "Không tìm thấy đơn hàng nào với số điện thoại này. Vui lòng kiểm tra lại hoặc liên hệ chúng tôi để được hỗ trợ."
+            }
+        
+        # Format order statuses
+        status_map = {
+            "new": "🆕 Mới tạo",
+            "confirmed": "✅ Đã xác nhận",
+            "preparing": "📦 Đang chuẩn bị",
+            "shipping": "🚚 Đang giao",
+            "delivered": "✅ Đã giao",
+            "cancelled": "❌ Đã hủy",
+            "returned": "↩️ Đã trả"
+        }
+        
+        orders_text = []
+        for order in result.data[:3]:  # Show max 3 recent orders
+            order_id_short = order["id"][:8]
+            status = status_map.get(order["status"], order["status"])
+            total = order.get("total", 0)
+            created = order.get("created_at", "")[:10]
+            tracking = order.get("tracking_number", "")
+            
+            order_info = f"📋 Đơn #{order_id_short} ({created})\nTrạng thái: {status}\nTổng: {total:,}đ"
+            
+            if tracking:
+                order_info += f"\nMã vận đơn: {tracking}"
+            
+            orders_text.append(order_info)
+        
+        return {
+            "success": True,
+            "result": "\n\n".join(orders_text),
+            "order_count": len(result.data)
+        }
+    
+    except Exception as e:
+        return {"success": False, "error": f"Failed to check order status: {str(e)}"}
+
+
+async def _execute_search_products(args: Dict[str, Any], agent_id: str, db: Dict) -> Dict[str, Any]:
+    """Execute search products"""
+    try:
+        sb = db["get_supabase"]()
+        
+        query = args.get("query", "")
+        category = args.get("category")
+        max_results = args.get("max_results", 5)
+        
+        if not query:
+            return {"success": False, "error": "Query is required"}
+        
+        # Search products
+        search_query = sb.table("products").select("*").eq("agent_id", agent_id).eq("is_active", True)
+        
+        if category:
+            search_query = search_query.eq("category", category)
+        
+        # Use OR filter for name and description
+        search_query = search_query.or_(f"name.ilike.%{query}%,description.ilike.%{query}%")
+        
+        result = search_query.limit(max_results).execute()
+        
+        if not result.data:
+            return {
+                "success": True,
+                "result": f"Không tìm thấy sản phẩm nào với từ khóa '{query}'. Vui lòng thử từ khóa khác hoặc liên hệ chúng tôi để được tư vấn!"
+            }
+        
+        # Format product list
+        products_text = []
+        for product in result.data:
+            name = product.get("name", "")
+            price = product.get("price", 0)
+            sale_price = product.get("sale_price")
+            in_stock = product.get("in_stock", True)
+            description = product.get("description", "")[:100]  # Truncate
+            
+            product_info = f"📦 **{name}**"
+            
+            if sale_price and sale_price < price:
+                product_info += f"\n💰 Giá: ~~{price:,}đ~~ → **{sale_price:,}đ** (SALE!)"
+            else:
+                product_info += f"\n💰 Giá: {price:,}đ"
+            
+            if not in_stock:
+                product_info += "\n⚠️ Tạm hết hàng"
+            
+            if description:
+                product_info += f"\n📝 {description}..."
+            
+            products_text.append(product_info)
+        
+        return {
+            "success": True,
+            "result": "\n\n".join(products_text),
+            "product_count": len(result.data)
+        }
+    
+    except Exception as e:
+        return {"success": False, "error": f"Failed to search products: {str(e)}"}

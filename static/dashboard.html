@@ -1312,6 +1312,19 @@
                 <span class="icon">👥</span>
                 <span>Khách hàng</span>
             </div>
+            <div class="nav-item" data-view="orders" onclick="showView('orders')">
+                <span class="icon">🛒</span>
+                <span>Đơn hàng</span>
+                <span class="badge-count" id="orderCount">0</span>
+            </div>
+            <div class="nav-item" data-view="products" onclick="showView('products')">
+                <span class="icon">📦</span>
+                <span>Sản phẩm</span>
+            </div>
+            <div class="nav-item" data-view="quick-replies" onclick="showView('quick-replies')">
+                <span class="icon">💬</span>
+                <span>Mẫu trả lời</span>
+            </div>
         </div>
         <div class="nav-section">
             <div class="nav-section-title">Agents</div>
@@ -1877,7 +1890,10 @@ function showView(view) {
         'posts': 'Bài viết',
         'broadcast': 'Broadcast',
         'automations': 'Tự động',
-        'customers': 'Khách hàng'
+        'customers': 'Khách hàng',
+        'orders': 'Đơn hàng',
+        'products': 'Sản phẩm',
+        'quick-replies': 'Mẫu trả lời'
     };
     document.getElementById('breadcrumbCurrent').textContent = titles[view] || view;
     
@@ -1891,6 +1907,9 @@ function showView(view) {
         else toast('Vui lòng chọn agent trước', '⚠️');
     }
     else if (view === 'customers') renderCustomers();
+    else if (view === 'orders') renderOrders();
+    else if (view === 'products') renderProducts();
+    else if (view === 'quick-replies') renderQuickReplies();
 }
 
 function selectAgent(agentId) {
@@ -5031,6 +5050,823 @@ async function exportComments() {
     } catch(e) {
         toast('Lỗi: ' + e.message, '❌');
     }
+}
+
+// === ORDERS VIEW (BATCH 9) ===
+
+async function renderOrders() {
+    const c = document.getElementById('content');
+    
+    if (!currentAgent) {
+        c.innerHTML = `
+            <div style="text-align: center; padding: 48px 24px;">
+                <div style="font-size: 48px; margin-bottom: 16px;">🛒</div>
+                <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Quản lý đơn hàng</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 24px;">Chọn một agent từ sidebar để xem đơn hàng</p>
+            </div>
+        `;
+        return;
+    }
+    
+    c.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <h2 style="font-size: 24px; font-weight: 700;">Đơn hàng - ${esc(currentAgent.name)}</h2>
+            <button class="btn" onclick="openCreateOrder()" style="background: var(--accent); color: #fff;">+ Tạo đơn hàng</button>
+        </div>
+        
+        <div id="orderStats" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px;">
+            <div class="skeleton-card" style="height: 100px;"></div>
+            <div class="skeleton-card" style="height: 100px;"></div>
+            <div class="skeleton-card" style="height: 100px;"></div>
+            <div class="skeleton-card" style="height: 100px;"></div>
+        </div>
+        
+        <div id="orderKanban" style="display: flex; gap: 16px; overflow-x: auto; padding-bottom: 16px;">
+            ${['new', 'confirmed', 'preparing', 'shipping', 'delivered', 'cancelled'].map(status => `
+                <div class="skeleton-card" style="min-width: 280px; height: 400px;"></div>
+            `).join('')}
+        </div>
+    `;
+    
+    try {
+        // Load stats
+        const stats = await api(`/api/agents/${currentAgent.id}/orders/stats`);
+        document.getElementById('orderStats').innerHTML = `
+            <div class="card" style="padding: 16px;">
+                <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Tổng đơn</div>
+                <div style="font-size: 28px; font-weight: 700;">${stats.total_orders || 0}</div>
+            </div>
+            <div class="card" style="padding: 16px;">
+                <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Doanh thu</div>
+                <div style="font-size: 28px; font-weight: 700;">${formatVND(stats.total_revenue || 0)}</div>
+            </div>
+            <div class="card" style="padding: 16px;">
+                <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Chờ xử lý</div>
+                <div style="font-size: 28px; font-weight: 700;">${(stats.by_status?.new || 0) + (stats.by_status?.confirmed || 0)}</div>
+            </div>
+            <div class="card" style="padding: 16px;">
+                <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 4px;">Đang giao</div>
+                <div style="font-size: 28px; font-weight: 700;">${stats.by_status?.shipping || 0}</div>
+            </div>
+        `;
+        
+        // Load all orders
+        const { orders } = await api(`/api/agents/${currentAgent.id}/orders`);
+        
+        // Group by status
+        const statusGroups = {
+            'new': { title: 'Mới', color: '#818cf8', orders: [] },
+            'confirmed': { title: 'Xác nhận', color: '#34d399', orders: [] },
+            'preparing': { title: 'Đang gói', color: '#fb923c', orders: [] },
+            'shipping': { title: 'Đang giao', color: '#a78bfa', orders: [] },
+            'delivered': { title: 'Đã giao', color: '#10b981', orders: [] },
+            'cancelled': { title: 'Huỷ', color: '#ef4444', orders: [] }
+        };
+        
+        orders.forEach(order => {
+            if (statusGroups[order.status]) {
+                statusGroups[order.status].orders.push(order);
+            }
+        });
+        
+        // Render kanban
+        document.getElementById('orderKanban').innerHTML = Object.entries(statusGroups).map(([status, group]) => `
+            <div style="min-width: 280px; flex-shrink: 0;">
+                <div style="background: ${group.color}; color: #fff; padding: 12px 16px; border-radius: 12px 12px 0 0; font-weight: 600; display: flex; justify-content: space-between;">
+                    <span>${group.title}</span>
+                    <span>${group.orders.length}</span>
+                </div>
+                <div style="background: var(--bg-elevated); padding: 12px; border-radius: 0 0 12px 12px; min-height: 400px; display: flex; flex-direction: column; gap: 12px;">
+                    ${group.orders.map(order => {
+                        const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+                        const itemsSummary = items.slice(0, 2).map(i => i.product_name).join(', ') + (items.length > 2 ? '...' : '');
+                        return `
+                            <div class="card" style="padding: 12px; cursor: pointer;" onclick="viewOrderDetail('${order.id}')">
+                                <div style="font-weight: 600; margin-bottom: 8px;">${esc(order.customer_name)}</div>
+                                <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">${esc(order.customer_phone || 'Chưa có SĐT')}</div>
+                                <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">${esc(itemsSummary)}</div>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <div style="font-weight: 700; color: ${group.color};">${formatVND(order.total)}</div>
+                                    <div style="font-size: 11px; color: var(--text-secondary);">${timeAgo(order.created_at)}</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('') || '<div style="text-align: center; padding: 24px; color: var(--text-secondary); font-size: 13px;">Không có đơn</div>'}
+                </div>
+            </div>
+        `).join('');
+        
+    } catch (e) {
+        toast('Lỗi tải đơn hàng: ' + e.message, '❌');
+    }
+}
+
+async function viewOrderDetail(orderId) {
+    const c = document.getElementById('content');
+    c.innerHTML = '<div class="loading" style="padding: 48px; text-align: center;">Đang tải...</div>';
+    
+    try {
+        const { order } = await api(`/api/agents/${currentAgent.id}/orders/${orderId}`);
+        const items = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
+        
+        const statusOptions = ['new', 'confirmed', 'preparing', 'shipping', 'delivered', 'cancelled', 'returned'];
+        const statusMap = {
+            'new': '🆕 Mới',
+            'confirmed': '✅ Đã xác nhận',
+            'preparing': '📦 Đang gói',
+            'shipping': '🚚 Đang giao',
+            'delivered': '✅ Đã giao',
+            'cancelled': '❌ Đã hủy',
+            'returned': '↩️ Đã trả'
+        };
+        
+        c.innerHTML = `
+            <div style="margin-bottom: 24px;">
+                <button onclick="renderOrders()" class="btn-ghost">← Quay lại</button>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 320px; gap: 24px;">
+                <div>
+                    <div class="card" style="padding: 24px; margin-bottom: 16px;">
+                        <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 16px;">Chi tiết đơn hàng #${order.id.substring(0, 8)}</h3>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 24px;">
+                            <div>
+                                <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Tên khách hàng</label>
+                                <input type="text" value="${esc(order.customer_name)}" id="orderCustomerName" class="input">
+                            </div>
+                            <div>
+                                <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Số điện thoại</label>
+                                <input type="text" value="${esc(order.customer_phone || '')}" id="orderCustomerPhone" class="input">
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 24px;">
+                            <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Địa chỉ giao hàng</label>
+                            <textarea id="orderCustomerAddress" class="input" rows="2">${esc(order.customer_address || '')}</textarea>
+                        </div>
+                        
+                        <h4 style="font-weight: 600; margin-bottom: 12px;">Sản phẩm</h4>
+                        <div style="border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 16px;">
+                            ${items.map(item => `
+                                <div style="display: flex; justify-content: space-between; padding: 12px; border-bottom: 1px solid var(--border);">
+                                    <div>
+                                        <div style="font-weight: 500;">${esc(item.product_name)}</div>
+                                        <div style="font-size: 13px; color: var(--text-secondary);">x${item.quantity}</div>
+                                    </div>
+                                    <div style="font-weight: 600;">${formatVND(item.price * item.quantity)}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 8px; padding: 16px; background: var(--bg-input); border-radius: 8px;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Tạm tính</span>
+                                <span>${formatVND(order.subtotal)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Phí ship</span>
+                                <span>${formatVND(order.shipping_fee || 0)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Giảm giá</span>
+                                <span>-${formatVND(order.discount || 0)}</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; font-size: 18px; font-weight: 700; padding-top: 8px; border-top: 1px solid var(--border);">
+                                <span>Tổng cộng</span>
+                                <span style="color: var(--accent);">${formatVND(order.total)}</span>
+                            </div>
+                        </div>
+                        
+                        <div style="margin-top: 24px;">
+                            <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Ghi chú</label>
+                            <textarea id="orderNotes" class="input" rows="3">${esc(order.notes || '')}</textarea>
+                        </div>
+                        
+                        <button onclick="updateOrderDetails('${order.id}')" class="btn" style="background: var(--accent); color: #fff; width: 100%; margin-top: 16px;">Lưu thay đổi</button>
+                    </div>
+                </div>
+                
+                <div>
+                    <div class="card" style="padding: 20px; margin-bottom: 16px;">
+                        <h4 style="font-weight: 600; margin-bottom: 16px;">Trạng thái</h4>
+                        <select id="orderStatus" class="input" style="margin-bottom: 16px;" onchange="updateOrderStatus('${order.id}')">
+                            ${statusOptions.map(s => `<option value="${s}" ${s === order.status ? 'selected' : ''}>${statusMap[s]}</option>`).join('')}
+                        </select>
+                        
+                        <h4 style="font-weight: 600; margin-bottom: 12px; margin-top: 24px;">Thanh toán</h4>
+                        <select id="orderPaymentStatus" class="input" style="margin-bottom: 12px;" onchange="updateOrderDetails('${order.id}')">
+                            <option value="unpaid" ${order.payment_status === 'unpaid' ? 'selected' : ''}>Chưa thanh toán</option>
+                            <option value="paid" ${order.payment_status === 'paid' ? 'selected' : ''}>Đã thanh toán</option>
+                            <option value="refunded" ${order.payment_status === 'refunded' ? 'selected' : ''}>Đã hoàn tiền</option>
+                        </select>
+                        
+                        <label style="font-size: 13px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Mã vận đơn</label>
+                        <input type="text" id="orderTracking" value="${esc(order.tracking_number || '')}" class="input" placeholder="Nhập mã vận đơn">
+                        
+                        <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-secondary);">
+                            <div style="margin-bottom: 4px;">Tạo: ${new Date(order.created_at).toLocaleString('vi-VN')}</div>
+                            <div>Cập nhật: ${new Date(order.updated_at).toLocaleString('vi-VN')}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        toast('Lỗi tải chi tiết đơn hàng: ' + e.message, '❌');
+        renderOrders();
+    }
+}
+
+async function updateOrderStatus(orderId) {
+    const status = document.getElementById('orderStatus').value;
+    try {
+        await api(`/api/agents/${currentAgent.id}/orders/${orderId}/status`, 'PUT', { status });
+        toast('Đã cập nhật trạng thái', '✅');
+    } catch (e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function updateOrderDetails(orderId) {
+    try {
+        await api(`/api/agents/${currentAgent.id}/orders/${orderId}`, 'PUT', {
+            customer_name: document.getElementById('orderCustomerName').value,
+            customer_phone: document.getElementById('orderCustomerPhone').value,
+            customer_address: document.getElementById('orderCustomerAddress').value,
+            notes: document.getElementById('orderNotes').value,
+            payment_status: document.getElementById('orderPaymentStatus').value,
+            tracking_number: document.getElementById('orderTracking').value
+        });
+        toast('Đã lưu thay đổi', '✅');
+    } catch (e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+function openCreateOrder() {
+    // TODO: Implement create order modal
+    toast('Tính năng này đang được phát triển', '🚧');
+}
+
+// === PRODUCTS VIEW (BATCH 9) ===
+
+async function renderProducts() {
+    const c = document.getElementById('content');
+    
+    if (!currentAgent) {
+        c.innerHTML = `
+            <div style="text-align: center; padding: 48px 24px;">
+                <div style="font-size: 48px; margin-bottom: 16px;">📦</div>
+                <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Quản lý sản phẩm</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 24px;">Chọn một agent từ sidebar để quản lý sản phẩm</p>
+            </div>
+        `;
+        return;
+    }
+    
+    c.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <h2 style="font-size: 24px; font-weight: 700;">Sản phẩm - ${esc(currentAgent.name)}</h2>
+            <div style="display: flex; gap: 12px;">
+                <input type="search" id="productSearch" placeholder="Tìm sản phẩm..." class="input" style="width: 280px;">
+                <button class="btn" onclick="openCreateProduct()" style="background: var(--accent); color: #fff;">+ Thêm sản phẩm</button>
+            </div>
+        </div>
+        
+        <div id="productCategories" style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+            <button class="btn-ghost btn-sm" onclick="filterProducts('')" data-category="">Tất cả</button>
+        </div>
+        
+        <div id="productGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
+            ${[1,2,3,4,5,6].map(() => '<div class="skeleton-card" style="height: 280px;"></div>').join('')}
+        </div>
+    `;
+    
+    try {
+        const { products } = await api(`/api/agents/${currentAgent.id}/products`);
+        
+        // Get unique categories
+        const categories = [...new Set(products.map(p => p.category).filter(Boolean))];
+        if (categories.length > 0) {
+            document.getElementById('productCategories').innerHTML = `
+                <button class="btn-ghost btn-sm active" onclick="filterProducts('')" data-category="">Tất cả</button>
+                ${categories.map(cat => `
+                    <button class="btn-ghost btn-sm" onclick="filterProducts('${esc(cat)}')" data-category="${esc(cat)}">${esc(cat)}</button>
+                `).join('')}
+            `;
+        }
+        
+        // Render products
+        renderProductGrid(products);
+        
+        // Search functionality
+        document.getElementById('productSearch').addEventListener('input', async (e) => {
+            const search = e.target.value;
+            if (search.length > 0) {
+                const { products: filtered } = await api(`/api/agents/${currentAgent.id}/products/search?q=${encodeURIComponent(search)}`);
+                renderProductGrid(filtered);
+            } else {
+                renderProductGrid(products);
+            }
+        });
+        
+    } catch (e) {
+        toast('Lỗi tải sản phẩm: ' + e.message, '❌');
+    }
+}
+
+function renderProductGrid(products) {
+    const grid = document.getElementById('productGrid');
+    grid.innerHTML = products.length ? products.map(product => `
+        <div class="card" style="padding: 0; overflow: hidden; cursor: pointer;" onclick="viewProductDetail('${product.id}')">
+            <div style="height: 140px; background: linear-gradient(135deg, var(--accent), var(--purple)); display: flex; align-items: center; justify-content: center; font-size: 48px;">
+                ${product.image_url ? `<img src="${esc(product.image_url)}" style="width: 100%; height: 100%; object-fit: cover;">` : '📦'}
+            </div>
+            <div style="padding: 16px;">
+                <div style="font-weight: 600; margin-bottom: 8px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">${esc(product.name)}</div>
+                <div style="display: flex; align-items: baseline; gap: 8px; margin-bottom: 8px;">
+                    ${product.sale_price && product.sale_price < product.price ? `
+                        <div style="font-size: 18px; font-weight: 700; color: var(--red);">${formatVND(product.sale_price)}</div>
+                        <div style="font-size: 13px; color: var(--text-secondary); text-decoration: line-through;">${formatVND(product.price)}</div>
+                    ` : `
+                        <div style="font-size: 18px; font-weight: 700;">${formatVND(product.price)}</div>
+                    `}
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px;">
+                    <span style="padding: 4px 8px; background: var(--bg-input); border-radius: 4px;">${esc(product.category || 'Chưa phân loại')}</span>
+                    <span style="color: ${product.in_stock ? 'var(--green)' : 'var(--red)'};">${product.in_stock ? '✓ Còn hàng' : '✗ Hết hàng'}</span>
+                </div>
+            </div>
+        </div>
+    `).join('') : '<div style="grid-column: 1/-1; text-align: center; padding: 48px; color: var(--text-secondary);">Chưa có sản phẩm nào</div>';
+}
+
+async function filterProducts(category) {
+    document.querySelectorAll('[data-category]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.category === category);
+    });
+    
+    try {
+        const url = category 
+            ? `/api/agents/${currentAgent.id}/products?category=${encodeURIComponent(category)}`
+            : `/api/agents/${currentAgent.id}/products`;
+        const { products } = await api(url);
+        renderProductGrid(products);
+    } catch (e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function viewProductDetail(productId) {
+    const c = document.getElementById('content');
+    c.innerHTML = '<div class="loading" style="padding: 48px; text-align: center;">Đang tải...</div>';
+    
+    try {
+        const { product } = await api(`/api/agents/${currentAgent.id}/products/${productId}`);
+        
+        c.innerHTML = `
+            <div style="margin-bottom: 24px;">
+                <button onclick="renderProducts()" class="btn-ghost">← Quay lại</button>
+            </div>
+            
+            <div class="card" style="padding: 24px; max-width: 800px; margin: 0 auto;">
+                <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 24px;">Chi tiết sản phẩm</h3>
+                
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label class="label">Tên sản phẩm *</label>
+                        <input type="text" id="productName" value="${esc(product.name)}" class="input">
+                    </div>
+                    <div>
+                        <label class="label">SKU</label>
+                        <input type="text" id="productSKU" value="${esc(product.sku || '')}" class="input">
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 16px;">
+                    <label class="label">Mô tả</label>
+                    <textarea id="productDescription" class="input" rows="3">${esc(product.description || '')}</textarea>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label class="label">Giá (VND) *</label>
+                        <input type="number" id="productPrice" value="${product.price}" class="input">
+                    </div>
+                    <div>
+                        <label class="label">Giá sale (VND)</label>
+                        <input type="number" id="productSalePrice" value="${product.sale_price || ''}" class="input">
+                    </div>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label class="label">Danh mục</label>
+                        <input type="text" id="productCategory" value="${esc(product.category || '')}" class="input">
+                    </div>
+                    <div>
+                        <label class="label">Số lượng tồn</label>
+                        <input type="number" id="productStock" value="${product.stock_quantity || ''}" class="input">
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 16px;">
+                    <label class="label">URL hình ảnh</label>
+                    <input type="text" id="productImageUrl" value="${esc(product.image_url || '')}" class="input">
+                </div>
+                
+                <div style="display: flex; gap: 16px; margin-bottom: 24px;">
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="productInStock" ${product.in_stock ? 'checked' : ''}>
+                        <span>Còn hàng</span>
+                    </label>
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input type="checkbox" id="productActive" ${product.is_active ? 'checked' : ''}>
+                        <span>Kích hoạt</span>
+                    </label>
+                </div>
+                
+                <div style="display: flex; gap: 12px;">
+                    <button onclick="updateProduct('${product.id}')" class="btn" style="background: var(--accent); color: #fff; flex: 1;">Lưu thay đổi</button>
+                    <button onclick="deleteProduct('${product.id}')" class="btn" style="background: var(--red); color: #fff;">Xóa</button>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        toast('Lỗi tải sản phẩm: ' + e.message, '❌');
+        renderProducts();
+    }
+}
+
+async function updateProduct(productId) {
+    try {
+        await api(`/api/agents/${currentAgent.id}/products/${productId}`, 'PUT', {
+            name: document.getElementById('productName').value,
+            description: document.getElementById('productDescription').value,
+            price: parseInt(document.getElementById('productPrice').value),
+            sale_price: parseInt(document.getElementById('productSalePrice').value) || null,
+            category: document.getElementById('productCategory').value,
+            sku: document.getElementById('productSKU').value,
+            image_url: document.getElementById('productImageUrl').value,
+            stock_quantity: parseInt(document.getElementById('productStock').value) || null,
+            in_stock: document.getElementById('productInStock').checked,
+            is_active: document.getElementById('productActive').checked
+        });
+        toast('Đã cập nhật sản phẩm', '✅');
+        renderProducts();
+    } catch (e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function deleteProduct(productId) {
+    if (!confirm('Bạn có chắc muốn xóa sản phẩm này?')) return;
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}/products/${productId}`, 'DELETE');
+        toast('Đã xóa sản phẩm', '✅');
+        renderProducts();
+    } catch (e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+function openCreateProduct() {
+    const c = document.getElementById('content');
+    
+    c.innerHTML = `
+        <div style="margin-bottom: 24px;">
+            <button onclick="renderProducts()" class="btn-ghost">← Quay lại</button>
+        </div>
+        
+        <div class="card" style="padding: 24px; max-width: 800px; margin: 0 auto;">
+            <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 24px;">Thêm sản phẩm mới</h3>
+            
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 16px;">
+                <div>
+                    <label class="label">Tên sản phẩm *</label>
+                    <input type="text" id="newProductName" class="input" placeholder="Áo thun cotton">
+                </div>
+                <div>
+                    <label class="label">SKU</label>
+                    <input type="text" id="newProductSKU" class="input" placeholder="AT-001">
+                </div>
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+                <label class="label">Mô tả</label>
+                <textarea id="newProductDescription" class="input" rows="3" placeholder="Chất liệu cotton 100%, thoáng mát..."></textarea>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 16px;">
+                <div>
+                    <label class="label">Giá (VND) *</label>
+                    <input type="number" id="newProductPrice" class="input" placeholder="100000">
+                </div>
+                <div>
+                    <label class="label">Giá sale (VND)</label>
+                    <input type="number" id="newProductSalePrice" class="input" placeholder="80000">
+                </div>
+            </div>
+            
+            <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-bottom: 16px;">
+                <div>
+                    <label class="label">Danh mục</label>
+                    <input type="text" id="newProductCategory" class="input" placeholder="Quần áo">
+                </div>
+                <div>
+                    <label class="label">Số lượng tồn</label>
+                    <input type="number" id="newProductStock" class="input" placeholder="100">
+                </div>
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+                <label class="label">URL hình ảnh</label>
+                <input type="text" id="newProductImageUrl" class="input" placeholder="https://example.com/image.jpg">
+            </div>
+            
+            <button onclick="createProduct()" class="btn" style="background: var(--accent); color: #fff; width: 100%;">Tạo sản phẩm</button>
+        </div>
+    `;
+}
+
+async function createProduct() {
+    const name = document.getElementById('newProductName').value;
+    const price = parseInt(document.getElementById('newProductPrice').value);
+    
+    if (!name || !price) {
+        toast('Vui lòng nhập tên và giá sản phẩm', '⚠️');
+        return;
+    }
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}/products`, 'POST', {
+            name,
+            description: document.getElementById('newProductDescription').value,
+            price,
+            sale_price: parseInt(document.getElementById('newProductSalePrice').value) || null,
+            category: document.getElementById('newProductCategory').value,
+            sku: document.getElementById('newProductSKU').value,
+            image_url: document.getElementById('newProductImageUrl').value,
+            stock_quantity: parseInt(document.getElementById('newProductStock').value) || null,
+            in_stock: true,
+            is_active: true
+        });
+        toast('Đã tạo sản phẩm', '✅');
+        renderProducts();
+    } catch (e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+// === QUICK REPLIES VIEW (BATCH 9) ===
+
+async function renderQuickReplies() {
+    const c = document.getElementById('content');
+    
+    if (!currentAgent) {
+        c.innerHTML = `
+            <div style="text-align: center; padding: 48px 24px;">
+                <div style="font-size: 48px; margin-bottom: 16px;">💬</div>
+                <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Mẫu trả lời nhanh</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 24px;">Chọn một agent từ sidebar để quản lý mẫu trả lời</p>
+            </div>
+        `;
+        return;
+    }
+    
+    c.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+            <h2 style="font-size: 24px; font-weight: 700;">Mẫu trả lời - ${esc(currentAgent.name)}</h2>
+            <button class="btn" onclick="openCreateQuickReply()" style="background: var(--accent); color: #fff;">+ Thêm mẫu</button>
+        </div>
+        
+        <div id="quickReplyList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">
+            ${[1,2,3,4].map(() => '<div class="skeleton-card" style="height: 160px;"></div>').join('')}
+        </div>
+    `;
+    
+    try {
+        const { quick_replies } = await api(`/api/agents/${currentAgent.id}/quick-replies`);
+        
+        // If no quick replies, create default ones
+        if (quick_replies.length === 0) {
+            await createDefaultQuickReplies();
+            const { quick_replies: newReplies } = await api(`/api/agents/${currentAgent.id}/quick-replies`);
+            renderQuickReplyList(newReplies);
+        } else {
+            renderQuickReplyList(quick_replies);
+        }
+        
+    } catch (e) {
+        toast('Lỗi tải mẫu trả lời: ' + e.message, '❌');
+    }
+}
+
+function renderQuickReplyList(quickReplies) {
+    const list = document.getElementById('quickReplyList');
+    list.innerHTML = quickReplies.length ? quickReplies.map(reply => `
+        <div class="card" style="padding: 16px; cursor: pointer;" onclick="editQuickReply('${reply.id}')">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                <div>
+                    <div style="font-weight: 600; margin-bottom: 4px;">${esc(reply.title)}</div>
+                    ${reply.shortcut ? `<div style="font-size: 12px; color: var(--accent); font-family: monospace;">${esc(reply.shortcut)}</div>` : ''}
+                </div>
+                <div style="font-size: 11px; color: var(--text-secondary);">Dùng: ${reply.use_count || 0}</div>
+            </div>
+            <div style="font-size: 13px; color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.4;">
+                ${esc(reply.content)}
+            </div>
+            <div style="margin-top: 12px; display: flex; gap: 8px;">
+                <span style="font-size: 11px; padding: 4px 8px; background: var(--bg-input); border-radius: 4px;">${esc(reply.category || 'general')}</span>
+                ${(reply.variables || []).length > 0 ? `<span style="font-size: 11px; padding: 4px 8px; background: var(--bg-input); border-radius: 4px;">📝 ${reply.variables.length} biến</span>` : ''}
+            </div>
+        </div>
+    `).join('') : '<div style="grid-column: 1/-1; text-align: center; padding: 48px; color: var(--text-secondary);">Chưa có mẫu trả lời nào</div>';
+}
+
+async function createDefaultQuickReplies() {
+    const defaults = [
+        { title: 'Chào mừng', shortcut: '/chao', content: 'Chào bạn! 👋 Cảm ơn bạn đã nhắn tin. Mình có thể giúp gì cho bạn ạ?', category: 'greeting' },
+        { title: 'Hỏi giá', shortcut: '/gia', content: 'Dạ sản phẩm {product_name} hiện đang có giá {price}đ ạ. Bạn muốn mình tư vấn thêm không?', category: 'sales', variables: ['product_name', 'price'] },
+        { title: 'Phí ship', shortcut: '/ship', content: 'Phí ship tuỳ khu vực ạ:\n- Nội thành: 30.000đ\n- Ngoại thành: 40.000đ\n- Tỉnh khác: 50.000đ\nGiao hàng trong 2-3 ngày.', category: 'shipping' },
+        { title: 'Đổi trả', shortcut: '/doitra', content: 'Chính sách đổi trả:\n- Đổi trong 7 ngày nếu lỗi sản xuất\n- Sản phẩm còn nguyên tag\n- Hoàn tiền trong 3-5 ngày làm việc', category: 'policy' },
+        { title: 'Cảm ơn đặt hàng', shortcut: '/camonnhan', content: 'Cảm ơn bạn đã đặt hàng! 🎉 Đơn hàng #{order_id} đã được xác nhận. Mình sẽ chuẩn bị và giao sớm nhất nhé!', category: 'order', variables: ['order_id'] },
+        { title: 'Ngoài giờ', shortcut: '/ngoaigio', content: 'Hiện tại ngoài giờ làm việc rồi ạ. Mình sẽ trả lời bạn sớm nhất vào {next_business_hour}. Cảm ơn bạn đã chờ! 🙏', category: 'auto', variables: ['next_business_hour'] }
+    ];
+    
+    for (const reply of defaults) {
+        try {
+            await api(`/api/agents/${currentAgent.id}/quick-replies`, 'POST', reply);
+        } catch (e) {
+            console.error('Failed to create default reply:', e);
+        }
+    }
+}
+
+function openCreateQuickReply() {
+    const c = document.getElementById('content');
+    
+    c.innerHTML = `
+        <div style="margin-bottom: 24px;">
+            <button onclick="renderQuickReplies()" class="btn-ghost">← Quay lại</button>
+        </div>
+        
+        <div class="card" style="padding: 24px; max-width: 700px; margin: 0 auto;">
+            <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 24px;">Tạo mẫu trả lời mới</h3>
+            
+            <div style="margin-bottom: 16px;">
+                <label class="label">Tiêu đề *</label>
+                <input type="text" id="newReplyTitle" class="input" placeholder="Chào mừng">
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                <div>
+                    <label class="label">Phím tắt</label>
+                    <input type="text" id="newReplyShortcut" class="input" placeholder="/chao">
+                </div>
+                <div>
+                    <label class="label">Danh mục</label>
+                    <input type="text" id="newReplyCategory" class="input" placeholder="greeting">
+                </div>
+            </div>
+            
+            <div style="margin-bottom: 16px;">
+                <label class="label">Nội dung *</label>
+                <textarea id="newReplyContent" class="input" rows="6" placeholder="Chào bạn! 👋 Cảm ơn bạn đã nhắn tin..."></textarea>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                    Dùng {tên_biến} để chèn biến. VD: {product_name}, {price}, {order_id}
+                </div>
+            </div>
+            
+            <button onclick="createQuickReply()" class="btn" style="background: var(--accent); color: #fff; width: 100%;">Tạo mẫu</button>
+        </div>
+    `;
+}
+
+async function createQuickReply() {
+    const title = document.getElementById('newReplyTitle').value;
+    const content = document.getElementById('newReplyContent').value;
+    
+    if (!title || !content) {
+        toast('Vui lòng nhập tiêu đề và nội dung', '⚠️');
+        return;
+    }
+    
+    // Extract variables from content
+    const variables = [...content.matchAll(/\{([^}]+)\}/g)].map(m => m[1]);
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}/quick-replies`, 'POST', {
+            title,
+            content,
+            shortcut: document.getElementById('newReplyShortcut').value,
+            category: document.getElementById('newReplyCategory').value || 'general',
+            variables
+        });
+        toast('Đã tạo mẫu trả lời', '✅');
+        renderQuickReplies();
+    } catch (e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function editQuickReply(replyId) {
+    try {
+        const replies = await api(`/api/agents/${currentAgent.id}/quick-replies`);
+        const reply = replies.quick_replies.find(r => r.id === replyId);
+        
+        if (!reply) {
+            toast('Không tìm thấy mẫu trả lời', '❌');
+            return;
+        }
+        
+        const c = document.getElementById('content');
+        c.innerHTML = `
+            <div style="margin-bottom: 24px;">
+                <button onclick="renderQuickReplies()" class="btn-ghost">← Quay lại</button>
+            </div>
+            
+            <div class="card" style="padding: 24px; max-width: 700px; margin: 0 auto;">
+                <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 24px;">Chỉnh sửa mẫu trả lời</h3>
+                
+                <div style="margin-bottom: 16px;">
+                    <label class="label">Tiêu đề *</label>
+                    <input type="text" id="editReplyTitle" value="${esc(reply.title)}" class="input">
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+                    <div>
+                        <label class="label">Phím tắt</label>
+                        <input type="text" id="editReplyShortcut" value="${esc(reply.shortcut || '')}" class="input">
+                    </div>
+                    <div>
+                        <label class="label">Danh mục</label>
+                        <input type="text" id="editReplyCategory" value="${esc(reply.category || 'general')}" class="input">
+                    </div>
+                </div>
+                
+                <div style="margin-bottom: 24px;">
+                    <label class="label">Nội dung *</label>
+                    <textarea id="editReplyContent" class="input" rows="6">${esc(reply.content)}</textarea>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                        Dùng {tên_biến} để chèn biến. VD: {product_name}, {price}, {order_id}
+                    </div>
+                </div>
+                
+                <div style="display: flex; gap: 12px;">
+                    <button onclick="updateQuickReply('${reply.id}')" class="btn" style="background: var(--accent); color: #fff; flex: 1;">Lưu thay đổi</button>
+                    <button onclick="deleteQuickReply('${reply.id}')" class="btn" style="background: var(--red); color: #fff;">Xóa</button>
+                </div>
+            </div>
+        `;
+    } catch (e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function updateQuickReply(replyId) {
+    const title = document.getElementById('editReplyTitle').value;
+    const content = document.getElementById('editReplyContent').value;
+    
+    if (!title || !content) {
+        toast('Vui lòng nhập tiêu đề và nội dung', '⚠️');
+        return;
+    }
+    
+    const variables = [...content.matchAll(/\{([^}]+)\}/g)].map(m => m[1]);
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}/quick-replies/${replyId}`, 'PUT', {
+            title,
+            content,
+            shortcut: document.getElementById('editReplyShortcut').value,
+            category: document.getElementById('editReplyCategory').value || 'general',
+            variables
+        });
+        toast('Đã cập nhật mẫu trả lời', '✅');
+        renderQuickReplies();
+    } catch (e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+async function deleteQuickReply(replyId) {
+    if (!confirm('Bạn có chắc muốn xóa mẫu trả lời này?')) return;
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}/quick-replies/${replyId}`, 'DELETE');
+        toast('Đã xóa mẫu trả lời', '✅');
+        renderQuickReplies();
+    } catch (e) {
+        toast('Lỗi: ' + e.message, '❌');
+    }
+}
+
+// Helper function for Vietnamese number formatting
+function formatVND(amount) {
+    return new Intl.NumberFormat('vi-VN').format(amount) + 'đ';
 }
 
 // Load templates on init

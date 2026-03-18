@@ -3523,6 +3523,546 @@ async def export_comments(
     )
 
 
+# === ORDERS (BATCH 9) ===
+
+@app.get("/api/agents/{agent_id}/orders")
+async def list_orders(agent_id: str, status: str = None, user=Depends(get_current_user)):
+    """List orders with optional status filter"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    query = sb.table("orders").select("*").eq("agent_id", agent_id)
+    
+    if status:
+        query = query.eq("status", status)
+    
+    result = query.order("created_at", desc=True).execute()
+    
+    return {"orders": result.data}
+
+
+@app.post("/api/agents/{agent_id}/orders")
+async def create_order(agent_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Create new order"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    # Calculate totals
+    items = body.get("items", [])
+    subtotal = sum(item.get("price", 0) * item.get("quantity", 1) for item in items)
+    shipping_fee = body.get("shipping_fee", 0)
+    discount = body.get("discount", 0)
+    total = subtotal + shipping_fee - discount
+    
+    order_data = {
+        "agent_id": agent_id,
+        "conversation_id": body.get("conversation_id"),
+        "customer_name": body.get("customer_name"),
+        "customer_phone": body.get("customer_phone"),
+        "customer_address": body.get("customer_address"),
+        "items": json.dumps(items),
+        "subtotal": subtotal,
+        "shipping_fee": shipping_fee,
+        "discount": discount,
+        "total": total,
+        "status": body.get("status", "new"),
+        "payment_status": body.get("payment_status", "unpaid"),
+        "payment_method": body.get("payment_method"),
+        "shipping_method": body.get("shipping_method"),
+        "notes": body.get("notes"),
+        "metadata": json.dumps(body.get("metadata", {})),
+    }
+    
+    result = sb.table("orders").insert(order_data).execute()
+    
+    return {"order": result.data[0]}
+
+
+@app.get("/api/agents/{agent_id}/orders/{order_id}")
+async def get_order(agent_id: str, order_id: str, user=Depends(get_current_user)):
+    """Get single order"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    result = sb.table("orders").select("*").eq("id", order_id).eq("agent_id", agent_id).execute()
+    
+    if not result.data:
+        raise HTTPException(404, "Order not found")
+    
+    return {"order": result.data[0]}
+
+
+@app.put("/api/agents/{agent_id}/orders/{order_id}")
+async def update_order(agent_id: str, order_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Update order details"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    # Recalculate totals if items changed
+    update_data = {}
+    
+    if "items" in body:
+        items = body["items"]
+        subtotal = sum(item.get("price", 0) * item.get("quantity", 1) for item in items)
+        shipping_fee = body.get("shipping_fee", 0)
+        discount = body.get("discount", 0)
+        total = subtotal + shipping_fee - discount
+        
+        update_data["items"] = json.dumps(items)
+        update_data["subtotal"] = subtotal
+        update_data["total"] = total
+    
+    # Update other fields
+    for field in ["customer_name", "customer_phone", "customer_address", "shipping_fee", 
+                  "discount", "status", "payment_status", "payment_method", "shipping_method",
+                  "tracking_number", "notes"]:
+        if field in body:
+            update_data[field] = body[field]
+    
+    if "metadata" in body:
+        update_data["metadata"] = json.dumps(body["metadata"])
+    
+    update_data["updated_at"] = datetime.utcnow().isoformat()
+    
+    result = sb.table("orders").update(update_data).eq("id", order_id).eq("agent_id", agent_id).execute()
+    
+    if not result.data:
+        raise HTTPException(404, "Order not found")
+    
+    return {"order": result.data[0]}
+
+
+@app.put("/api/agents/{agent_id}/orders/{order_id}/status")
+async def update_order_status(agent_id: str, order_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Update order status"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    status = body.get("status")
+    if not status:
+        raise HTTPException(400, "Status required")
+    
+    result = sb.table("orders").update({
+        "status": status,
+        "updated_at": datetime.utcnow().isoformat()
+    }).eq("id", order_id).eq("agent_id", agent_id).execute()
+    
+    if not result.data:
+        raise HTTPException(404, "Order not found")
+    
+    return {"order": result.data[0]}
+
+
+@app.get("/api/agents/{agent_id}/orders/stats")
+async def order_stats(agent_id: str, user=Depends(get_current_user)):
+    """Order statistics"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    # Get all orders
+    result = sb.table("orders").select("*").eq("agent_id", agent_id).execute()
+    orders = result.data
+    
+    # Calculate stats
+    total_orders = len(orders)
+    total_revenue = sum(order.get("total", 0) for order in orders)
+    
+    by_status = {}
+    by_payment = {}
+    
+    for order in orders:
+        status = order.get("status", "new")
+        payment = order.get("payment_status", "unpaid")
+        
+        by_status[status] = by_status.get(status, 0) + 1
+        by_payment[payment] = by_payment.get(payment, 0) + 1
+    
+    return {
+        "total_orders": total_orders,
+        "total_revenue": total_revenue,
+        "by_status": by_status,
+        "by_payment": by_payment,
+    }
+
+
+# === PRODUCTS (BATCH 9) ===
+
+@app.get("/api/agents/{agent_id}/products")
+async def list_products(agent_id: str, category: str = None, user=Depends(get_current_user)):
+    """List products with optional category filter"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    query = sb.table("products").select("*").eq("agent_id", agent_id)
+    
+    if category:
+        query = query.eq("category", category)
+    
+    result = query.order("created_at", desc=True).execute()
+    
+    return {"products": result.data}
+
+
+@app.post("/api/agents/{agent_id}/products")
+async def create_product(agent_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Create new product"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    product_data = {
+        "agent_id": agent_id,
+        "name": body.get("name"),
+        "description": body.get("description"),
+        "price": body.get("price", 0),
+        "sale_price": body.get("sale_price"),
+        "category": body.get("category"),
+        "sku": body.get("sku"),
+        "image_url": body.get("image_url"),
+        "in_stock": body.get("in_stock", True),
+        "stock_quantity": body.get("stock_quantity"),
+        "variants": json.dumps(body.get("variants", [])),
+        "tags": body.get("tags", []),
+        "metadata": json.dumps(body.get("metadata", {})),
+        "is_active": body.get("is_active", True),
+    }
+    
+    result = sb.table("products").insert(product_data).execute()
+    
+    return {"product": result.data[0]}
+
+
+@app.get("/api/agents/{agent_id}/products/{product_id}")
+async def get_product(agent_id: str, product_id: str, user=Depends(get_current_user)):
+    """Get single product"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    result = sb.table("products").select("*").eq("id", product_id).eq("agent_id", agent_id).execute()
+    
+    if not result.data:
+        raise HTTPException(404, "Product not found")
+    
+    return {"product": result.data[0]}
+
+
+@app.put("/api/agents/{agent_id}/products/{product_id}")
+async def update_product(agent_id: str, product_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Update product"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    update_data = {}
+    
+    for field in ["name", "description", "price", "sale_price", "category", "sku", 
+                  "image_url", "in_stock", "stock_quantity", "is_active", "tags"]:
+        if field in body:
+            update_data[field] = body[field]
+    
+    if "variants" in body:
+        update_data["variants"] = json.dumps(body["variants"])
+    
+    if "metadata" in body:
+        update_data["metadata"] = json.dumps(body["metadata"])
+    
+    update_data["updated_at"] = datetime.utcnow().isoformat()
+    
+    result = sb.table("products").update(update_data).eq("id", product_id).eq("agent_id", agent_id).execute()
+    
+    if not result.data:
+        raise HTTPException(404, "Product not found")
+    
+    return {"product": result.data[0]}
+
+
+@app.delete("/api/agents/{agent_id}/products/{product_id}")
+async def delete_product(agent_id: str, product_id: str, user=Depends(get_current_user)):
+    """Delete product"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    result = sb.table("products").delete().eq("id", product_id).eq("agent_id", agent_id).execute()
+    
+    return {"success": True}
+
+
+@app.get("/api/agents/{agent_id}/products/search")
+async def search_products(agent_id: str, q: str = Query(...), user=Depends(get_current_user)):
+    """Search products by name or description"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    # Use ILIKE for simple text search
+    result = sb.table("products").select("*").eq("agent_id", agent_id).or_(
+        f"name.ilike.%{q}%,description.ilike.%{q}%"
+    ).eq("is_active", True).limit(20).execute()
+    
+    return {"products": result.data}
+
+
+# === QUICK REPLIES (BATCH 9) ===
+
+@app.get("/api/agents/{agent_id}/quick-replies")
+async def list_quick_replies(agent_id: str, user=Depends(get_current_user)):
+    """List quick reply templates"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    result = sb.table("quick_replies").select("*").eq("agent_id", agent_id).order("use_count", desc=True).execute()
+    
+    return {"quick_replies": result.data}
+
+
+@app.post("/api/agents/{agent_id}/quick-replies")
+async def create_quick_reply(agent_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Create quick reply template"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    reply_data = {
+        "agent_id": agent_id,
+        "title": body.get("title"),
+        "content": body.get("content"),
+        "shortcut": body.get("shortcut"),
+        "category": body.get("category", "general"),
+        "variables": body.get("variables", []),
+    }
+    
+    result = sb.table("quick_replies").insert(reply_data).execute()
+    
+    return {"quick_reply": result.data[0]}
+
+
+@app.put("/api/agents/{agent_id}/quick-replies/{reply_id}")
+async def update_quick_reply(agent_id: str, reply_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Update quick reply template"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    update_data = {}
+    
+    for field in ["title", "content", "shortcut", "category", "variables", "use_count"]:
+        if field in body:
+            update_data[field] = body[field]
+    
+    result = sb.table("quick_replies").update(update_data).eq("id", reply_id).eq("agent_id", agent_id).execute()
+    
+    if not result.data:
+        raise HTTPException(404, "Quick reply not found")
+    
+    return {"quick_reply": result.data[0]}
+
+
+@app.delete("/api/agents/{agent_id}/quick-replies/{reply_id}")
+async def delete_quick_reply(agent_id: str, reply_id: str, user=Depends(get_current_user)):
+    """Delete quick reply template"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    result = sb.table("quick_replies").delete().eq("id", reply_id).eq("agent_id", agent_id).execute()
+    
+    return {"success": True}
+
+
+# === CUSTOMER TAGS (BATCH 9) ===
+
+@app.post("/api/agents/{agent_id}/customers/{customer_id}/tags")
+async def add_customer_tag(agent_id: str, customer_id: str, body: dict = Body(...), user=Depends(get_current_user)):
+    """Add tag to customer"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    tag = body.get("tag")
+    if not tag:
+        raise HTTPException(400, "Tag required")
+    
+    # Get current customer
+    result = sb.table("customers").select("tags").eq("id", customer_id).eq("agent_id", agent_id).execute()
+    
+    if not result.data:
+        raise HTTPException(404, "Customer not found")
+    
+    current_tags = result.data[0].get("tags", []) or []
+    
+    if tag not in current_tags:
+        current_tags.append(tag)
+    
+    update_result = sb.table("customers").update({
+        "tags": current_tags
+    }).eq("id", customer_id).eq("agent_id", agent_id).execute()
+    
+    return {"customer": update_result.data[0]}
+
+
+@app.delete("/api/agents/{agent_id}/customers/{customer_id}/tags/{tag}")
+async def remove_customer_tag(agent_id: str, customer_id: str, tag: str, user=Depends(get_current_user)):
+    """Remove tag from customer"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    # Get current customer
+    result = sb.table("customers").select("tags").eq("id", customer_id).eq("agent_id", agent_id).execute()
+    
+    if not result.data:
+        raise HTTPException(404, "Customer not found")
+    
+    current_tags = result.data[0].get("tags", []) or []
+    
+    if tag in current_tags:
+        current_tags.remove(tag)
+    
+    update_result = sb.table("customers").update({
+        "tags": current_tags
+    }).eq("id", customer_id).eq("agent_id", agent_id).execute()
+    
+    return {"customer": update_result.data[0]}
+
+
+@app.get("/api/agents/{agent_id}/customers/segments")
+async def get_customer_segments(agent_id: str, user=Depends(get_current_user)):
+    """Get customer segments: VIP, New, Returning, At-risk"""
+    sb = get_supabase()
+    
+    # Verify agent belongs to user
+    agent = get_agent(sb, agent_id, user["id"])
+    if not agent:
+        raise HTTPException(404, "Agent not found")
+    
+    # Get all customers
+    customers_result = sb.table("customers").select("*").eq("agent_id", agent_id).execute()
+    customers = customers_result.data
+    
+    # Get all orders
+    orders_result = sb.table("orders").select("*").eq("agent_id", agent_id).execute()
+    orders = orders_result.data
+    
+    # Get all conversations
+    convs_result = sb.table("conversations").select("*").eq("agent_id", agent_id).execute()
+    convs = convs_result.data
+    
+    # Calculate segments
+    segments = {
+        "vip": [],
+        "new": [],
+        "returning": [],
+        "at_risk": []
+    }
+    
+    now = datetime.utcnow()
+    seven_days_ago = now - timedelta(days=7)
+    thirty_days_ago = now - timedelta(days=30)
+    
+    for customer in customers:
+        customer_id = customer["id"]
+        
+        # Count orders
+        customer_orders = [o for o in orders if o.get("conversation_id") in 
+                          [c["id"] for c in convs if c.get("customer_id") == customer_id]]
+        order_count = len(customer_orders)
+        total_spent = sum(o.get("total", 0) for o in customer_orders)
+        
+        # VIP: >5 orders or >2M spent
+        if order_count > 5 or total_spent > 2000000:
+            segments["vip"].append(customer)
+        
+        # New: first message in last 7 days
+        created_at = datetime.fromisoformat(customer["created_at"].replace("Z", "+00:00"))
+        if created_at > seven_days_ago:
+            segments["new"].append(customer)
+        
+        # Returning: >1 conversation
+        customer_convs = [c for c in convs if c.get("customer_id") == customer_id]
+        if len(customer_convs) > 1:
+            segments["returning"].append(customer)
+        
+        # At-risk: no contact in 30 days
+        last_contact = max([datetime.fromisoformat(c["updated_at"].replace("Z", "+00:00")) 
+                           for c in customer_convs], default=created_at)
+        if last_contact < thirty_days_ago:
+            segments["at_risk"].append(customer)
+    
+    return {
+        "segments": {
+            "vip": len(segments["vip"]),
+            "new": len(segments["new"]),
+            "returning": len(segments["returning"]),
+            "at_risk": len(segments["at_risk"]),
+        },
+        "details": segments
+    }
+
+
 # === HEALTH ===
 
 @app.get("/api/health")
