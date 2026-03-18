@@ -3676,37 +3676,38 @@ async def update_order_status(agent_id: str, order_id: str, body: dict = Body(..
 @app.get("/api/agents/{agent_id}/orders/stats")
 async def order_stats(agent_id: str, user=Depends(get_current_user)):
     """Order statistics"""
-    sb = get_supabase()
-    
-    # Verify agent belongs to user
-    agent = get_agent(agent_id)
-    if not agent or agent["user_id"] != user["id"]:
-        raise HTTPException(404, "Agent not found")
-    
-    # Get all orders
-    result = sb.table("orders").select("*").eq("agent_id", agent_id).execute()
-    orders = result.data
-    
-    # Calculate stats
-    total_orders = len(orders)
-    total_revenue = sum(int(order.get("total", 0) or 0) for order in orders)
-    
-    by_status = {}
-    by_payment = {}
-    
-    for order in orders:
-        status = order.get("status", "new")
-        payment = order.get("payment_status", "unpaid")
+    try:
+        sb = get_supabase()
         
-        by_status[status] = by_status.get(status, 0) + 1
-        by_payment[payment] = by_payment.get(payment, 0) + 1
-    
-    return {
-        "total_orders": total_orders,
-        "total_revenue": total_revenue,
-        "by_status": by_status,
-        "by_payment": by_payment,
-    }
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        result = sb.table("orders").select("*").eq("agent_id", agent_id).execute()
+        orders = result.data or []
+        
+        total_orders = len(orders)
+        total_revenue = 0
+        by_status = {}
+        by_payment = {}
+        
+        for order in orders:
+            total_revenue += int(order.get("total", 0) or 0)
+            status = order.get("status", "new")
+            payment = order.get("payment_status", "unpaid")
+            by_status[status] = by_status.get(status, 0) + 1
+            by_payment[payment] = by_payment.get(payment, 0) + 1
+        
+        return {
+            "total_orders": total_orders,
+            "total_revenue": total_revenue,
+            "by_status": by_status,
+            "by_payment": by_payment,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        return {"error": str(e), "total_orders": 0, "total_revenue": 0, "by_status": {}, "by_payment": {}}
 
 
 # === PRODUCTS (BATCH 9) ===
