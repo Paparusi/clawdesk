@@ -51,7 +51,7 @@ from server.tools import get_tool_definitions, execute_tool
 # Mỗi agent thêm: 100,000 VND/tháng
 # Tất cả agent đều full features, không lock tính năng
 AGENT_PRICE_VND = 100000  # 100k VND per additional agent per month
-FREE_AGENTS = 1  # First agent is free
+FREE_AGENTS = 3  # 3 free agents during beta (will reduce to 1 after payment integration)
 
 # Free agent features (webchat only)
 FREE_AGENT_FEATURES = {
@@ -335,7 +335,7 @@ async def create_new_agent(body: dict = Body(...), user=Depends(get_current_user
         limit_check = check_limit(user["id"], user.get("plan", "free"), "agents", agent_count)
         
         if not limit_check["allowed"]:
-            raise HTTPException(403, f"Plan {user.get('plan', 'free')} cho phép tối đa {limit_check['limit']} agent. Nâng cấp để tạo thêm.")
+            raise HTTPException(403, f"Bạn đã đạt giới hạn {limit_check['limit']} agent miễn phí. Mỗi agent thêm 100.000đ/tháng.")
         
         agent = create_agent(user["id"], body)
         
