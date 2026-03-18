@@ -38,10 +38,72 @@ from server.db import (
     create_facebook_comment, get_facebook_comment, list_facebook_comments,
     update_facebook_comment, delete_facebook_comment, get_comment_analytics,
     get_top_commented_posts, get_top_commenters,
+    # Usage tracking & plan limits
+    get_current_usage, increment_usage, check_limit,
 )
 
 # Import tool system
 from server.tools import get_tool_definitions, execute_tool
+
+# === PLAN LIMITS CONFIGURATION ===
+PLAN_LIMITS = {
+    "free": {
+        "agents": 1,
+        "ai_messages_per_month": 100,
+        "channels": ["webchat"],  # only webchat
+        "knowledge_items": 10,
+        "products": 50,
+        "automation_rules": 2,
+        "staff_accounts": 1,
+        "broadcast": False,
+        "export": False,
+        "remove_branding": False,
+        "ai_post_generation": 0,
+        "comment_auto_reply": False,
+    },
+    "pro": {
+        "agents": 3,
+        "ai_messages_per_month": 2000,
+        "channels": ["webchat", "facebook", "telegram", "zalo"],
+        "knowledge_items": 100,
+        "products": 500,
+        "automation_rules": 20,
+        "staff_accounts": 1,
+        "broadcast": False,
+        "export": True,
+        "remove_branding": True,
+        "ai_post_generation": 10,
+        "comment_auto_reply": True,
+    },
+    "business": {
+        "agents": 10,
+        "ai_messages_per_month": 10000,
+        "channels": ["webchat", "facebook", "telegram", "zalo"],
+        "knowledge_items": 500,
+        "products": -1,  # unlimited
+        "automation_rules": -1,  # unlimited
+        "staff_accounts": 3,
+        "broadcast": True,
+        "export": True,
+        "remove_branding": True,
+        "ai_post_generation": 50,
+        "comment_auto_reply": True,
+    },
+    "enterprise": {
+        "agents": -1,
+        "ai_messages_per_month": -1,
+        "channels": ["webchat", "facebook", "telegram", "zalo"],
+        "knowledge_items": -1,
+        "products": -1,
+        "automation_rules": -1,
+        "staff_accounts": 10,
+        "broadcast": True,
+        "export": True,
+        "remove_branding": True,
+        "ai_post_generation": -1,
+        "comment_auto_reply": True,
+    }
+}
 
 app = FastAPI(title="AI Agent Platform", version="2.0")
 
@@ -181,6 +243,41 @@ async def me(user=Depends(get_current_user)):
     }
 
 
+# === PLAN & USAGE ENDPOINTS ===
+
+@app.get("/api/user/plan")
+async def get_user_plan(user=Depends(get_current_user)):
+    """Get current plan details and usage"""
+    plan = user.get("plan", "free")
+    usage = get_current_usage(user["id"])
+    limits = PLAN_LIMITS[plan]
+    
+    return {
+        "plan": plan,
+        "limits": limits,
+        "usage": usage,
+        "plan_started_at": user.get("plan_started_at"),
+        "plan_expires_at": user.get("plan_expires_at")
+    }
+
+
+@app.post("/api/user/upgrade")
+async def upgrade_plan(body: dict = Body(...), user=Depends(get_current_user)):
+    """Upgrade user plan (placeholder for payment integration)"""
+    new_plan = body.get("plan")
+    if new_plan not in PLAN_LIMITS:
+        raise HTTPException(400, "Invalid plan")
+    
+    # For now, just update the plan (payment integration later)
+    sb = get_supabase()
+    sb.table("profiles").update({
+        "plan": new_plan,
+        "plan_started_at": datetime.now().isoformat()
+    }).eq("id", user["id"]).execute()
+    
+    return {"message": f"Đã nâng cấp lên gói {new_plan}", "plan": new_plan}
+
+
 # === AGENT ENDPOINTS ===
 
 @app.get("/api/agents")
@@ -210,11 +307,10 @@ async def create_new_agent(body: dict = Body(...), user=Depends(get_current_user
     try:
         # Check plan limits
         agent_count = count_user_agents(user["id"])
-        plan_limits = {"free": 1, "pro": 5, "business": 20}
-        user_plan = user.get("plan", "free")
+        limit_check = check_limit(user["id"], user.get("plan", "free"), "agents", agent_count)
         
-        if agent_count >= plan_limits.get(user_plan, 1):
-            raise HTTPException(403, f"Agent limit reached for {user_plan} plan")
+        if not limit_check["allowed"]:
+            raise HTTPException(403, f"Plan {user.get('plan', 'free')} cho phép tối đa {limit_check['limit']} agent. Nâng cấp để tạo thêm.")
         
         agent = create_agent(user["id"], body)
         
@@ -592,6 +688,12 @@ async def add_channel_endpoint(agent_id: str, body: dict = Body(...), user=Depen
         channel_type = body.get("type")
         if channel_type not in ("telegram", "zalo", "facebook", "webchat"):
             raise HTTPException(400, "Invalid channel type. Supported: telegram, zalo, facebook, webchat")
+        
+        # Check if plan allows this channel type
+        user_plan = user.get("plan", "free")
+        allowed_channels = PLAN_LIMITS[user_plan]["channels"]
+        if channel_type not in allowed_channels:
+            raise HTTPException(403, f"Kênh {channel_type} chỉ có trong gói Pro trở lên.")
         
         config = {}
         
@@ -1453,8 +1555,17 @@ async def telegram_webhook(agent_id: str, body: dict = Body(...)):
         recent = get_recent_messages(conv_id, limit=20)
         chat_messages = [{"role": m["role"], "content": m["content"]} for m in recent]
         
-        # Get AI response with RAG + Tools
-        response = await run_agent(agent, chat_messages, conv_id)
+        # Check AI message limit
+        user = get_profile(agent["user_id"])
+        limit_check = check_limit(agent["user_id"], user.get("plan", "free"), "ai_messages_per_month")
+        
+        if not limit_check["allowed"]:
+            response = "Bạn đã hết lượt tin nhắn AI trong tháng. Vui lòng nâng cấp gói để tiếp tục."
+        else:
+            # Get AI response with RAG + Tools
+            response = await run_agent(agent, chat_messages, conv_id)
+            # Track usage
+            increment_usage(agent["user_id"], "ai_messages")
         
         # Save assistant message
         create_message(conv_id, "assistant", response)
@@ -1544,8 +1655,17 @@ async def facebook_webhook(agent_id: str, body: dict = Body(...)):
                 recent = get_recent_messages(conv_id, limit=20)
                 chat_messages = [{"role": m["role"], "content": m["content"]} for m in recent]
                 
-                # Get AI response with RAG + Tools
-                response = await run_agent(agent, chat_messages, conv_id)
+                # Check AI message limit
+                user = get_profile(agent["user_id"])
+                limit_check = check_limit(agent["user_id"], user.get("plan", "free"), "ai_messages_per_month")
+                
+                if not limit_check["allowed"]:
+                    response = "Bạn đã hết lượt tin nhắn AI trong tháng. Vui lòng nâng cấp gói để tiếp tục."
+                else:
+                    # Get AI response with RAG + Tools
+                    response = await run_agent(agent, chat_messages, conv_id)
+                    # Track usage
+                    increment_usage(agent["user_id"], "ai_messages")
                 
                 # Save assistant message
                 create_message(conv_id, "assistant", response)
@@ -1970,13 +2090,19 @@ async def widget_info(agent_id: str):
         
         settings = agent.get("settings", {})
         
+        # Get user plan to determine branding
+        user = get_profile(agent["user_id"])
+        user_plan = user.get("plan", "free") if user else "free"
+        remove_branding = PLAN_LIMITS[user_plan].get("remove_branding", False)
+        
         return {
             "name": agent.get("name", "AI Assistant"),
             "avatar": settings.get("avatar"),
             "emoji": settings.get("emoji", "🤖"),
             "welcome_message": settings.get("welcome_message", "Xin chào! Tôi có thể giúp gì cho bạn?"),
             "quick_replies": settings.get("quick_replies", []),
-            "status": "online" if agent.get("is_active", True) else "offline"
+            "status": "online" if agent.get("is_active", True) else "offline",
+            "remove_branding": remove_branding
         }
     except HTTPException:
         raise

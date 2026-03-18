@@ -424,6 +424,12 @@
                     avatarEl.textContent = agentInfo.emoji || '🤖';
                 }
                 
+                // Hide branding for Pro+ plans
+                const footerEl = window.querySelector('.claw-footer');
+                if (agentInfo.remove_branding) {
+                    footerEl.style.display = 'none';
+                }
+                
                 // Show welcome message
                 if (messages.length === 0 && agentInfo.welcome_message) {
                     const welcome = document.createElement('div');

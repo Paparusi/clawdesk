@@ -1049,3 +1049,62 @@ def get_comments_for_export(agent_id: str) -> List[Dict[str, Any]]:
         })
     
     return export_data
+
+
+# === USAGE TRACKING & PLAN LIMITS ===
+
+def get_current_usage(user_id: str) -> Dict[str, Any]:
+    """Get current month usage"""
+    period = datetime.now().strftime("%Y-%m")
+    sb = get_supabase()
+    result = sb.table("usage").select("*").eq("user_id", user_id).eq("period", period).execute()
+    
+    if result.data:
+        return result.data[0]
+    
+    # Create new period
+    new_usage = sb.table("usage").insert({"user_id": user_id, "period": period}).execute()
+    return new_usage.data[0] if new_usage.data else {}
+
+
+def increment_usage(user_id: str, field: str, amount: int = 1):
+    """Increment a usage counter"""
+    usage = get_current_usage(user_id)
+    if not usage:
+        return
+    
+    current = usage.get(field, 0)
+    sb = get_supabase()
+    sb.table("usage").update({
+        field: current + amount,
+        "updated_at": datetime.now().isoformat()
+    }).eq("id", usage["id"]).execute()
+
+
+def check_limit(user_id: str, plan: str, feature: str, current_count: Optional[int] = None) -> Dict[str, Any]:
+    """
+    Check if user is within plan limits.
+    Returns {allowed: bool, limit: int, used: int, remaining: int}
+    """
+    from server.main import PLAN_LIMITS
+    
+    limits = PLAN_LIMITS.get(plan, PLAN_LIMITS["free"])
+    limit_value = limits.get(feature)
+    
+    if limit_value == -1:  # unlimited
+        return {"allowed": True, "limit": -1, "used": 0, "remaining": -1}
+    if isinstance(limit_value, bool):
+        return {"allowed": limit_value, "limit": limit_value, "used": 0, "remaining": 0}
+    
+    if current_count is not None:
+        used = current_count
+    else:
+        usage = get_current_usage(user_id)
+        used = usage.get(feature, 0)
+    
+    return {
+        "allowed": used < limit_value,
+        "limit": limit_value,
+        "used": used,
+        "remaining": max(0, limit_value - used)
+    }
