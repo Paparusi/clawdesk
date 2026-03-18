@@ -34,6 +34,10 @@ from server.db import (
     # Conversation mode & status
     update_conversation_mode, update_conversation_status, get_conversation,
     set_typing_indicator, get_typing_indicator,
+    # Facebook comment functions
+    create_facebook_comment, get_facebook_comment, list_facebook_comments,
+    update_facebook_comment, delete_facebook_comment, get_comment_analytics,
+    get_top_commented_posts, get_top_commenters,
 )
 
 # Import tool system
@@ -1509,7 +1513,7 @@ async def facebook_verify(agent_id: str, request: Request):
 
 @app.post("/api/webhook/facebook/{agent_id}")
 async def facebook_webhook(agent_id: str, body: dict = Body(...)):
-    """Receive Facebook Messenger messages"""
+    """Receive Facebook Messenger messages AND post comments"""
     try:
         agent = get_agent(agent_id)
         
@@ -1521,6 +1525,7 @@ async def facebook_webhook(agent_id: str, body: dict = Body(...)):
             return {"status": "ok"}
         
         for entry in body.get("entry", []):
+            # Handle Page messages (existing)
             for event in entry.get("messaging", []):
                 sender_id = str(event.get("sender", {}).get("id", ""))
                 text = event.get("message", {}).get("text", "")
@@ -1559,12 +1564,250 @@ async def facebook_webhook(agent_id: str, body: dict = Body(...)):
                             params={"access_token": page_token},
                             json={"recipient": {"id": sender_id}, "message": {"text": response}},
                         )
+            
+            # Handle Post comments (NEW)
+            for change in entry.get("changes", []):
+                if change.get("field") == "feed":
+                    value = change.get("value", {})
+                    item = value.get("item")
+                    verb = value.get("verb")
+                    
+                    if item == "comment" and verb in ("add", "edited"):
+                        comment_id = value.get("comment_id")
+                        post_id = value.get("post_id")
+                        sender_id = str(value.get("from", {}).get("id", ""))
+                        sender_name = value.get("from", {}).get("name", "")
+                        message = value.get("message", "")
+                        parent_id = value.get("parent_id")
+                        
+                        if not message or not sender_id or not comment_id:
+                            continue
+                        
+                        # Don't reply to own comments (page's comments)
+                        page_id = post_id.split("_")[0] if "_" in post_id else ""
+                        if sender_id == page_id:
+                            continue
+                        
+                        # Process comment with AI agent
+                        await handle_facebook_comment(
+                            agent_id, post_id, comment_id,
+                            sender_id, sender_name, message,
+                            parent_id, channel
+                        )
         
         return {"status": "ok"}
     
     except Exception as e:
         print(f"Facebook webhook error: {e}")
         return {"status": "ok"}
+
+
+async def handle_facebook_comment(
+    agent_id: str,
+    post_id: str,
+    comment_id: str,
+    sender_id: str,
+    sender_name: str,
+    message: str,
+    parent_comment_id: Optional[str],
+    channel: dict
+):
+    """Handle Facebook comment - AI reply + optional inbox"""
+    try:
+        agent = get_agent(agent_id)
+        page_token = channel.get("config", {}).get("page_token", "")
+        
+        if not page_token:
+            return
+        
+        # Check if comment already exists (deduplication)
+        existing = get_facebook_comment(comment_id)
+        if existing:
+            return
+        
+        # Get comment settings from agent
+        comment_settings = agent.get("settings", {}).get("facebook_comments", {})
+        auto_reply = comment_settings.get("auto_reply", True)
+        auto_inbox = comment_settings.get("auto_inbox", False)
+        reply_delay = comment_settings.get("reply_delay_seconds", 30)
+        
+        # Detect comment intent
+        intent, keywords = detect_comment_intent(message, comment_settings)
+        sentiment = detect_sentiment(message)
+        
+        # Create comment record
+        create_facebook_comment(
+            agent_id, post_id, comment_id,
+            sender_id, sender_name, message,
+            parent_comment_id,
+            metadata={"intent": intent, "keywords": keywords}
+        )
+        
+        # Auto-hide spam
+        if intent == "SPAM" and comment_settings.get("auto_hide_spam", False):
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"https://graph.facebook.com/v18.0/{comment_id}",
+                    params={"access_token": page_token},
+                    json={"is_hidden": True}
+                )
+            
+            update_facebook_comment(comment_id, {
+                "is_hidden": True,
+                "is_spam": True,
+                "sentiment": "negative"
+            })
+            return
+        
+        # Don't auto-reply if disabled
+        if not auto_reply:
+            update_facebook_comment(comment_id, {"sentiment": sentiment})
+            return
+        
+        # Get or create conversation for this commenter
+        conversation = get_or_create_conversation(
+            agent_id, "facebook_comment", sender_id, sender_name
+        )
+        conv_id = conversation["id"]
+        
+        # Add user message with context
+        context_msg = f"[Comment on post {post_id}]\n{message}"
+        create_message(conv_id, "user", context_msg, metadata={
+            "comment_id": comment_id,
+            "post_id": post_id,
+            "type": "comment",
+            "intent": intent
+        })
+        
+        # Get recent messages for context
+        recent = get_recent_messages(conv_id, limit=10)
+        chat_messages = [{"role": m["role"], "content": m["content"]} for m in recent]
+        
+        # Add system context about comment intent
+        if intent in ("PRICE_INQUIRY", "STOCK_CHECK", "ORDER_INTENT"):
+            chat_messages.insert(0, {
+                "role": "system",
+                "content": f"Customer is asking about {intent.lower().replace('_', ' ')}. Provide helpful, concise answer."
+            })
+        
+        # Delay to look natural
+        if reply_delay > 0:
+            await asyncio.sleep(reply_delay)
+        
+        # Run AI agent to get response
+        response = await run_agent(agent, chat_messages, conv_id)
+        
+        # Save response
+        create_message(conv_id, "assistant", response, metadata={"type": "comment_reply"})
+        
+        # Reply to the comment on Facebook
+        async with httpx.AsyncClient() as client:
+            await client.post(
+                f"https://graph.facebook.com/v18.0/{comment_id}/comments",
+                params={"access_token": page_token},
+                json={"message": response}
+            )
+        
+        # Update comment with AI reply
+        update_facebook_comment(comment_id, {
+            "ai_reply": response,
+            "ai_replied_at": datetime.utcnow().isoformat(),
+            "sentiment": sentiment
+        })
+        
+        # Send private message (inbox) for certain intents
+        should_inbox = auto_inbox and intent in ("PRICE_INQUIRY", "ORDER_INTENT", "INBOX_REQUEST")
+        
+        if should_inbox:
+            inbox_msg = comment_settings.get("inbox_message", 
+                "Cảm ơn bạn đã quan tâm! Để tư vấn chi tiết hơn, mình xin phép inbox bạn nhé.")
+            
+            try:
+                # Use private_replies API
+                await client.post(
+                    f"https://graph.facebook.com/v18.0/{comment_id}/private_replies",
+                    params={"access_token": page_token},
+                    json={"message": f"{inbox_msg}\n\n{response}"}
+                )
+            except Exception as e:
+                print(f"Failed to send private reply: {e}")
+        
+        # Auto-like positive comments
+        if sentiment == "positive" and comment_settings.get("auto_like_positive", False):
+            try:
+                await client.post(
+                    f"https://graph.facebook.com/v18.0/{comment_id}/likes",
+                    params={"access_token": page_token}
+                )
+                update_facebook_comment(comment_id, {"is_liked": True})
+            except Exception as e:
+                print(f"Failed to like comment: {e}")
+        
+        # Update stats
+        increment_agent_stats(agent_id)
+    
+    except Exception as e:
+        print(f"Error handling Facebook comment: {e}")
+
+
+def detect_comment_intent(message: str, settings: dict) -> tuple:
+    """Detect intent from comment text (Vietnamese + English)"""
+    msg_lower = message.lower()
+    
+    # Get custom keywords from settings
+    inbox_keywords = settings.get("inbox_trigger_keywords", [
+        "giá", "bao nhiêu", "inbox", "pm", "ib", "giá bao nhiêu", "price"
+    ])
+    blacklist = settings.get("blacklist_keywords", ["lừa đảo", "scam", "fake"])
+    
+    # Check blacklist first (spam)
+    for word in blacklist:
+        if word.lower() in msg_lower:
+            return ("SPAM", [word])
+    
+    # Price inquiry
+    price_keywords = ["giá", "bao nhiêu", "giá bao nhiêu", "bao nhiêu tiền", "price", "cost", "얼마"]
+    if any(kw in msg_lower for kw in price_keywords):
+        return ("PRICE_INQUIRY", [kw for kw in price_keywords if kw in msg_lower])
+    
+    # Stock check
+    stock_keywords = ["còn hàng", "còn không", "còn size", "có màu", "available", "in stock"]
+    if any(kw in msg_lower for kw in stock_keywords):
+        return ("STOCK_CHECK", [kw for kw in stock_keywords if kw in msg_lower])
+    
+    # Inbox request
+    if any(kw in msg_lower for kw in inbox_keywords):
+        return ("INBOX_REQUEST", [kw for kw in inbox_keywords if kw in msg_lower])
+    
+    # Order intent
+    order_keywords = ["đặt hàng", "mua", "order", "buy", "muốn mua", "chốt đơn"]
+    if any(kw in msg_lower for kw in order_keywords):
+        return ("ORDER_INTENT", [kw for kw in order_keywords if kw in msg_lower])
+    
+    # General question
+    question_keywords = ["?", "không", "sao", "thế nào", "how", "what", "why"]
+    if any(kw in msg_lower for kw in question_keywords):
+        return ("QUESTION", [])
+    
+    return ("GENERAL", [])
+
+
+def detect_sentiment(message: str) -> str:
+    """Detect sentiment: positive/neutral/negative (simple heuristic)"""
+    msg_lower = message.lower()
+    
+    positive_words = ["tuyệt", "đẹp", "ok", "good", "great", "love", "nice", "👍", "❤️", "😍", "🥰"]
+    negative_words = ["tệ", "dở", "bad", "poor", "fake", "lừa đảo", "scam", "👎", "😡", "💩"]
+    
+    pos_count = sum(1 for word in positive_words if word in msg_lower)
+    neg_count = sum(1 for word in negative_words if word in msg_lower)
+    
+    if neg_count > pos_count:
+        return "negative"
+    elif pos_count > neg_count:
+        return "positive"
+    else:
+        return "neutral"
 
 
 # === TELEGRAM BOT SETUP ===
@@ -2069,6 +2312,315 @@ async def get_agent_analytics(agent_id: str, user=Depends(get_current_user)):
             "channel_breakdown": channel_stats,
             "total_conversations": len(all_convs.data),
             "total_messages": agent.get("stats", {}).get("total_messages", 0)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# === FACEBOOK COMMENT MANAGEMENT ===
+
+@app.get("/api/agents/{agent_id}/comments")
+async def list_comments(
+    agent_id: str,
+    replied: Optional[bool] = Query(None),
+    is_spam: Optional[bool] = Query(None),
+    is_hidden: Optional[bool] = Query(None),
+    sentiment: Optional[str] = Query(None),
+    post_id: Optional[str] = Query(None),
+    sender_id: Optional[str] = Query(None),
+    limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
+    user=Depends(get_current_user)
+):
+    """List Facebook comments for an agent"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        filters = {}
+        if replied is not None:
+            filters["replied"] = replied
+        if is_spam is not None:
+            filters["is_spam"] = is_spam
+        if is_hidden is not None:
+            filters["is_hidden"] = is_hidden
+        if sentiment:
+            filters["sentiment"] = sentiment
+        if post_id:
+            filters["post_id"] = post_id
+        if sender_id:
+            filters["sender_id"] = sender_id
+        
+        comments = list_facebook_comments(agent_id, filters, limit, offset)
+        
+        return {
+            "comments": comments,
+            "total": len(comments),
+            "limit": limit,
+            "offset": offset
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/agents/{agent_id}/comments/{comment_id}/reply")
+async def reply_to_comment(
+    agent_id: str,
+    comment_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user)
+):
+    """Manually reply to a Facebook comment"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        comment = get_facebook_comment(comment_id)
+        if not comment or comment["agent_id"] != agent_id:
+            raise HTTPException(404, "Comment not found")
+        
+        reply_text = body.get("message", "").strip()
+        if not reply_text:
+            raise HTTPException(400, "Message is required")
+        
+        # Get channel config
+        channel = get_channel(agent_id, "facebook")
+        if not channel:
+            raise HTTPException(400, "Facebook channel not configured")
+        
+        page_token = channel.get("config", {}).get("page_token", "")
+        if not page_token:
+            raise HTTPException(400, "Facebook page token not found")
+        
+        # Reply on Facebook
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://graph.facebook.com/v18.0/{comment_id}/comments",
+                params={"access_token": page_token},
+                json={"message": reply_text}
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(500, "Failed to reply on Facebook")
+        
+        # Update comment record
+        update_facebook_comment(comment_id, {
+            "ai_reply": reply_text,
+            "ai_replied_at": datetime.utcnow().isoformat()
+        })
+        
+        return {"success": True, "message": "Reply sent"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/agents/{agent_id}/comments/{comment_id}/hide")
+async def hide_comment(
+    agent_id: str,
+    comment_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user)
+):
+    """Hide a Facebook comment"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        comment = get_facebook_comment(comment_id)
+        if not comment or comment["agent_id"] != agent_id:
+            raise HTTPException(404, "Comment not found")
+        
+        is_hidden = body.get("is_hidden", True)
+        
+        # Get channel config
+        channel = get_channel(agent_id, "facebook")
+        if not channel:
+            raise HTTPException(400, "Facebook channel not configured")
+        
+        page_token = channel.get("config", {}).get("page_token", "")
+        if not page_token:
+            raise HTTPException(400, "Facebook page token not found")
+        
+        # Hide/unhide on Facebook
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://graph.facebook.com/v18.0/{comment_id}",
+                params={"access_token": page_token},
+                json={"is_hidden": is_hidden}
+            )
+            
+            if response.status_code not in (200, 204):
+                raise HTTPException(500, "Failed to hide comment on Facebook")
+        
+        # Update comment record
+        update_facebook_comment(comment_id, {"is_hidden": is_hidden})
+        
+        return {"success": True, "is_hidden": is_hidden}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/agents/{agent_id}/comments/{comment_id}/like")
+async def like_comment(
+    agent_id: str,
+    comment_id: str,
+    user=Depends(get_current_user)
+):
+    """Like a Facebook comment"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        comment = get_facebook_comment(comment_id)
+        if not comment or comment["agent_id"] != agent_id:
+            raise HTTPException(404, "Comment not found")
+        
+        # Get channel config
+        channel = get_channel(agent_id, "facebook")
+        if not channel:
+            raise HTTPException(400, "Facebook channel not configured")
+        
+        page_token = channel.get("config", {}).get("page_token", "")
+        if not page_token:
+            raise HTTPException(400, "Facebook page token not found")
+        
+        # Like on Facebook
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://graph.facebook.com/v18.0/{comment_id}/likes",
+                params={"access_token": page_token}
+            )
+            
+            if response.status_code not in (200, 204):
+                raise HTTPException(500, "Failed to like comment on Facebook")
+        
+        # Update comment record
+        update_facebook_comment(comment_id, {"is_liked": True})
+        
+        return {"success": True}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.delete("/api/agents/{agent_id}/comments/{comment_id}")
+async def delete_comment_endpoint(
+    agent_id: str,
+    comment_id: str,
+    user=Depends(get_current_user)
+):
+    """Delete a Facebook comment"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        comment = get_facebook_comment(comment_id)
+        if not comment or comment["agent_id"] != agent_id:
+            raise HTTPException(404, "Comment not found")
+        
+        # Get channel config
+        channel = get_channel(agent_id, "facebook")
+        if not channel:
+            raise HTTPException(400, "Facebook channel not configured")
+        
+        page_token = channel.get("config", {}).get("page_token", "")
+        if not page_token:
+            raise HTTPException(400, "Facebook page token not found")
+        
+        # Delete on Facebook
+        async with httpx.AsyncClient() as client:
+            response = await client.delete(
+                f"https://graph.facebook.com/v18.0/{comment_id}",
+                params={"access_token": page_token}
+            )
+            
+            if response.status_code not in (200, 204):
+                raise HTTPException(500, "Failed to delete comment on Facebook")
+        
+        # Delete from database
+        delete_facebook_comment(comment_id)
+        
+        return {"success": True}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/agents/{agent_id}/comments/{comment_id}/spam")
+async def mark_spam(
+    agent_id: str,
+    comment_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user)
+):
+    """Mark comment as spam"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        comment = get_facebook_comment(comment_id)
+        if not comment or comment["agent_id"] != agent_id:
+            raise HTTPException(404, "Comment not found")
+        
+        is_spam = body.get("is_spam", True)
+        
+        # Update comment record
+        update_facebook_comment(comment_id, {
+            "is_spam": is_spam,
+            "sentiment": "negative" if is_spam else comment.get("sentiment", "neutral")
+        })
+        
+        return {"success": True, "is_spam": is_spam}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/agents/{agent_id}/comments/analytics")
+async def comment_analytics(
+    agent_id: str,
+    days: int = Query(7, ge=1, le=90),
+    user=Depends(get_current_user)
+):
+    """Get comment analytics for an agent"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        analytics = get_comment_analytics(agent_id, days)
+        top_posts = get_top_commented_posts(agent_id, limit=10)
+        top_commenters = get_top_commenters(agent_id, limit=10)
+        
+        return {
+            "analytics": analytics,
+            "top_posts": top_posts,
+            "top_commenters": top_commenters,
+            "period_days": days
         }
     
     except HTTPException:

@@ -641,3 +641,168 @@ def get_ticket_stats(agent_id: str) -> Dict[str, Any]:
         stats["avg_resolution_hours"] = 0
     
     return stats
+
+
+# === FACEBOOK COMMENT OPERATIONS ===
+
+def create_facebook_comment(
+    agent_id: str,
+    post_id: str,
+    comment_id: str,
+    sender_id: str,
+    sender_name: str,
+    message: str,
+    parent_comment_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Create a new Facebook comment record"""
+    sb = get_supabase()
+    
+    data = {
+        "agent_id": agent_id,
+        "post_id": post_id,
+        "comment_id": comment_id,
+        "sender_id": sender_id,
+        "sender_name": sender_name,
+        "message": message,
+        "parent_comment_id": parent_comment_id,
+        "metadata": metadata or {}
+    }
+    
+    result = sb.table("facebook_comments").insert(data).execute()
+    return result.data[0] if result.data else None
+
+
+def get_facebook_comment(comment_id: str) -> Optional[Dict[str, Any]]:
+    """Get a Facebook comment by comment_id"""
+    sb = get_supabase()
+    result = sb.table("facebook_comments").select("*").eq("comment_id", comment_id).execute()
+    return result.data[0] if result.data else None
+
+
+def list_facebook_comments(
+    agent_id: str,
+    filters: Optional[Dict[str, Any]] = None,
+    limit: int = 50,
+    offset: int = 0
+) -> List[Dict[str, Any]]:
+    """List Facebook comments with optional filters"""
+    sb = get_supabase()
+    
+    query = sb.table("facebook_comments").select("*").eq("agent_id", agent_id)
+    
+    if filters:
+        if filters.get("post_id"):
+            query = query.eq("post_id", filters["post_id"])
+        
+        if filters.get("replied") is True:
+            query = query.is_("ai_replied_at", "not.null")
+        elif filters.get("replied") is False:
+            query = query.is_("ai_replied_at", "null")
+        
+        if filters.get("is_spam") is not None:
+            query = query.eq("is_spam", filters["is_spam"])
+        
+        if filters.get("is_hidden") is not None:
+            query = query.eq("is_hidden", filters["is_hidden"])
+        
+        if filters.get("sentiment"):
+            query = query.eq("sentiment", filters["sentiment"])
+        
+        if filters.get("sender_id"):
+            query = query.eq("sender_id", filters["sender_id"])
+    
+    query = query.order("created_at", desc=True).limit(limit).offset(offset)
+    
+    result = query.execute()
+    return result.data
+
+
+def update_facebook_comment(comment_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Update a Facebook comment"""
+    sb = get_supabase()
+    result = sb.table("facebook_comments").update(data).eq("comment_id", comment_id).execute()
+    return result.data[0] if result.data else None
+
+
+def delete_facebook_comment(comment_id: str) -> bool:
+    """Delete a Facebook comment"""
+    sb = get_supabase()
+    result = sb.table("facebook_comments").delete().eq("comment_id", comment_id).execute()
+    return bool(result.data)
+
+
+def get_comment_analytics(agent_id: str, days: int = 7) -> Dict[str, Any]:
+    """Get comment analytics for an agent"""
+    sb = get_supabase()
+    
+    try:
+        result = sb.rpc("get_comment_analytics", {
+            "p_agent_id": agent_id,
+            "p_days": days
+        }).execute()
+        
+        return result.data if result.data else {}
+    except Exception:
+        # Fallback if function doesn't exist yet
+        comments = list_facebook_comments(agent_id, limit=1000)
+        
+        total = len(comments)
+        replied = sum(1 for c in comments if c.get("ai_replied_at"))
+        
+        return {
+            "total_comments": total,
+            "replied_count": replied,
+            "unreplied_count": total - replied,
+            "reply_rate": round(100.0 * replied / total, 2) if total > 0 else 0,
+            "spam_count": sum(1 for c in comments if c.get("is_spam")),
+            "positive_count": sum(1 for c in comments if c.get("sentiment") == "positive"),
+            "neutral_count": sum(1 for c in comments if c.get("sentiment") == "neutral"),
+            "negative_count": sum(1 for c in comments if c.get("sentiment") == "negative"),
+        }
+
+
+def get_top_commented_posts(agent_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """Get top posts by comment count"""
+    sb = get_supabase()
+    
+    comments = list_facebook_comments(agent_id, limit=1000)
+    
+    # Group by post_id
+    post_counts = {}
+    for comment in comments:
+        post_id = comment["post_id"]
+        if post_id not in post_counts:
+            post_counts[post_id] = {
+                "post_id": post_id,
+                "comment_count": 0,
+                "latest_comment": comment["message"]
+            }
+        post_counts[post_id]["comment_count"] += 1
+    
+    # Sort and return top
+    sorted_posts = sorted(post_counts.values(), key=lambda x: x["comment_count"], reverse=True)
+    return sorted_posts[:limit]
+
+
+def get_top_commenters(agent_id: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """Get most active commenters"""
+    sb = get_supabase()
+    
+    comments = list_facebook_comments(agent_id, limit=1000)
+    
+    # Group by sender_id
+    commenter_counts = {}
+    for comment in comments:
+        sender_id = comment["sender_id"]
+        if sender_id not in commenter_counts:
+            commenter_counts[sender_id] = {
+                "sender_id": sender_id,
+                "sender_name": comment["sender_name"],
+                "comment_count": 0
+            }
+        commenter_counts[sender_id]["comment_count"] += 1
+    
+    # Sort and return top
+    sorted_commenters = sorted(commenter_counts.values(), key=lambda x: x["comment_count"], reverse=True)
+    return sorted_commenters[:limit]

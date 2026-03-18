@@ -154,6 +154,48 @@ def get_tool_definitions(provider: str, tools_enabled: List[str]) -> List[Dict[s
                 }
             }
         },
+        
+        "send_private_reply": {
+            "name": "send_private_reply",
+            "description": "Gửi tin nhắn riêng (inbox) cho người dùng đã bình luận trên Facebook. Sử dụng khi khách hàng comment hỏi giá hoặc yêu cầu thông tin chi tiết.",
+            "parameters": {
+                "message": {
+                    "type": "string",
+                    "description": "Nội dung tin nhắn inbox",
+                    "required": True
+                }
+            }
+        },
+        
+        "hide_comment": {
+            "name": "hide_comment",
+            "description": "Ẩn bình luận spam hoặc tiêu cực trên Facebook. Sử dụng khi phát hiện spam, ngôn từ xúc phạm, hoặc nội dung không phù hợp.",
+            "parameters": {
+                "reason": {
+                    "type": "string",
+                    "description": "Lý do ẩn bình luận (ví dụ: 'spam', 'offensive', 'inappropriate')",
+                    "required": True
+                }
+            }
+        },
+        
+        "like_comment": {
+            "name": "like_comment",
+            "description": "Thích (like) bình luận tích cực của khách hàng. Sử dụng để tương tác và khích lệ feedback tốt.",
+            "parameters": {}
+        },
+        
+        "analyze_comment_sentiment": {
+            "name": "analyze_comment_sentiment",
+            "description": "Phân tích cảm xúc của bình luận (positive/neutral/negative). Trả về sentiment và mức độ tin cậy.",
+            "parameters": {
+                "comment_text": {
+                    "type": "string",
+                    "description": "Nội dung bình luận cần phân tích",
+                    "required": True
+                }
+            }
+        },
     }
     
     # Filter enabled tools
@@ -300,6 +342,18 @@ async def execute_tool(
         
         elif tool_name == "transfer_conversation":
             return await _execute_transfer(tool_args, conversation_id, db_functions)
+        
+        elif tool_name == "send_private_reply":
+            return await _execute_send_private_reply(tool_args, agent, conversation_id, db_functions)
+        
+        elif tool_name == "hide_comment":
+            return await _execute_hide_comment(tool_args, conversation_id, db_functions)
+        
+        elif tool_name == "like_comment":
+            return await _execute_like_comment(conversation_id, db_functions)
+        
+        elif tool_name == "analyze_comment_sentiment":
+            return await _execute_analyze_sentiment(tool_args)
         
         else:
             return {"success": False, "error": f"Unknown tool: {tool_name}"}
@@ -530,4 +584,226 @@ async def _execute_transfer(args: Dict[str, Any], conv_id: str, db: Dict) -> Dic
         "success": True,
         "result": f"Đang chuyển sang bộ phận {department}. {reason}",
         "department": department
+    }
+
+
+async def _execute_send_private_reply(args: Dict[str, Any], agent: Dict, conv_id: str, db: Dict) -> Dict[str, Any]:
+    """Execute send private reply to commenter"""
+    import httpx
+    
+    message = args.get("message", "")
+    
+    if not message:
+        return {"success": False, "error": "Message is required"}
+    
+    try:
+        sb = db["get_supabase"]()
+        
+        # Get conversation to find comment_id
+        conv = sb.table("conversations").select("*, messages(*)").eq("id", conv_id).execute()
+        if not conv.data:
+            return {"success": False, "error": "Conversation not found"}
+        
+        # Find the latest user message with comment metadata
+        messages = conv.data[0].get("messages", [])
+        comment_id = None
+        for msg in reversed(messages):
+            if msg.get("role") == "user" and msg.get("metadata", {}).get("comment_id"):
+                comment_id = msg["metadata"]["comment_id"]
+                break
+        
+        if not comment_id:
+            return {"success": False, "error": "Comment ID not found in conversation"}
+        
+        # Get Facebook channel config
+        from server.db import get_channel
+        channel = get_channel(agent["id"], "facebook")
+        if not channel:
+            return {"success": False, "error": "Facebook channel not configured"}
+        
+        page_token = channel.get("config", {}).get("page_token", "")
+        if not page_token:
+            return {"success": False, "error": "Facebook page token not found"}
+        
+        # Send private reply via Facebook API
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://graph.facebook.com/v18.0/{comment_id}/private_replies",
+                params={"access_token": page_token},
+                json={"message": message}
+            )
+            
+            if response.status_code not in (200, 204):
+                return {"success": False, "error": f"Facebook API error: {response.status_code}"}
+        
+        return {
+            "success": True,
+            "result": f"Đã gửi tin nhắn riêng cho khách hàng: {message[:50]}..."
+        }
+    
+    except Exception as e:
+        return {"success": False, "error": f"Failed to send private reply: {str(e)}"}
+
+
+async def _execute_hide_comment(args: Dict[str, Any], conv_id: str, db: Dict) -> Dict[str, Any]:
+    """Execute hide comment"""
+    import httpx
+    
+    reason = args.get("reason", "spam")
+    
+    try:
+        sb = db["get_supabase"]()
+        
+        # Get conversation to find comment_id and agent_id
+        conv = sb.table("conversations").select("*, messages(*)").eq("id", conv_id).execute()
+        if not conv.data:
+            return {"success": False, "error": "Conversation not found"}
+        
+        agent_id = conv.data[0].get("agent_id")
+        messages = conv.data[0].get("messages", [])
+        comment_id = None
+        
+        for msg in reversed(messages):
+            if msg.get("role") == "user" and msg.get("metadata", {}).get("comment_id"):
+                comment_id = msg["metadata"]["comment_id"]
+                break
+        
+        if not comment_id:
+            return {"success": False, "error": "Comment ID not found"}
+        
+        # Get Facebook channel config
+        from server.db import get_channel, update_facebook_comment
+        channel = get_channel(agent_id, "facebook")
+        if not channel:
+            return {"success": False, "error": "Facebook channel not configured"}
+        
+        page_token = channel.get("config", {}).get("page_token", "")
+        if not page_token:
+            return {"success": False, "error": "Facebook page token not found"}
+        
+        # Hide comment via Facebook API
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://graph.facebook.com/v18.0/{comment_id}",
+                params={"access_token": page_token},
+                json={"is_hidden": True}
+            )
+            
+            if response.status_code not in (200, 204):
+                return {"success": False, "error": f"Facebook API error: {response.status_code}"}
+        
+        # Update database
+        update_facebook_comment(comment_id, {
+            "is_hidden": True,
+            "is_spam": reason == "spam"
+        })
+        
+        return {
+            "success": True,
+            "result": f"Đã ẩn bình luận (Lý do: {reason})"
+        }
+    
+    except Exception as e:
+        return {"success": False, "error": f"Failed to hide comment: {str(e)}"}
+
+
+async def _execute_like_comment(conv_id: str, db: Dict) -> Dict[str, Any]:
+    """Execute like comment"""
+    import httpx
+    
+    try:
+        sb = db["get_supabase"]()
+        
+        # Get conversation to find comment_id and agent_id
+        conv = sb.table("conversations").select("*, messages(*)").eq("id", conv_id).execute()
+        if not conv.data:
+            return {"success": False, "error": "Conversation not found"}
+        
+        agent_id = conv.data[0].get("agent_id")
+        messages = conv.data[0].get("messages", [])
+        comment_id = None
+        
+        for msg in reversed(messages):
+            if msg.get("role") == "user" and msg.get("metadata", {}).get("comment_id"):
+                comment_id = msg["metadata"]["comment_id"]
+                break
+        
+        if not comment_id:
+            return {"success": False, "error": "Comment ID not found"}
+        
+        # Get Facebook channel config
+        from server.db import get_channel, update_facebook_comment
+        channel = get_channel(agent_id, "facebook")
+        if not channel:
+            return {"success": False, "error": "Facebook channel not configured"}
+        
+        page_token = channel.get("config", {}).get("page_token", "")
+        if not page_token:
+            return {"success": False, "error": "Facebook page token not found"}
+        
+        # Like comment via Facebook API
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"https://graph.facebook.com/v18.0/{comment_id}/likes",
+                params={"access_token": page_token}
+            )
+            
+            if response.status_code not in (200, 204):
+                return {"success": False, "error": f"Facebook API error: {response.status_code}"}
+        
+        # Update database
+        update_facebook_comment(comment_id, {"is_liked": True})
+        
+        return {
+            "success": True,
+            "result": "Đã thích bình luận"
+        }
+    
+    except Exception as e:
+        return {"success": False, "error": f"Failed to like comment: {str(e)}"}
+
+
+async def _execute_analyze_sentiment(args: Dict[str, Any]) -> Dict[str, Any]:
+    """Execute analyze comment sentiment"""
+    comment_text = args.get("comment_text", "")
+    
+    if not comment_text:
+        return {"success": False, "error": "Comment text is required"}
+    
+    # Simple sentiment analysis (can be enhanced with ML models)
+    text_lower = comment_text.lower()
+    
+    positive_words = [
+        "tuyệt", "đẹp", "ok", "good", "great", "excellent", "love", "nice", 
+        "amazing", "perfect", "wonderful", "👍", "❤️", "😍", "🥰", "tốt", 
+        "hay", "thích", "ưng"
+    ]
+    
+    negative_words = [
+        "tệ", "dở", "bad", "poor", "terrible", "awful", "hate", "worst",
+        "fake", "lừa đảo", "scam", "kém", "không tốt", "👎", "😡", "💩"
+    ]
+    
+    neutral_indicators = ["?", "bao nhiêu", "giá", "còn hàng", "how", "what", "when"]
+    
+    pos_count = sum(1 for word in positive_words if word in text_lower)
+    neg_count = sum(1 for word in negative_words if word in text_lower)
+    
+    if neg_count > pos_count:
+        sentiment = "negative"
+        confidence = min(0.5 + (neg_count * 0.1), 0.95)
+    elif pos_count > neg_count:
+        sentiment = "positive"
+        confidence = min(0.5 + (pos_count * 0.1), 0.95)
+    else:
+        sentiment = "neutral"
+        confidence = 0.6
+    
+    return {
+        "success": True,
+        "result": f"Sentiment: {sentiment} (Confidence: {confidence:.0%})",
+        "sentiment": sentiment,
+        "confidence": confidence,
+        "positive_signals": pos_count,
+        "negative_signals": neg_count
     }
