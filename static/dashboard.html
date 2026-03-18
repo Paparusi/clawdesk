@@ -468,6 +468,26 @@
         .btn-group {
             display: flex; gap: 12px; margin-top: 20px; flex-wrap: wrap;
         }
+        .btn-text {
+            background: none; border: none; color: var(--text-secondary);
+            cursor: pointer; font-size: 13px; padding: 6px 10px;
+            transition: all .2s; border-radius: 6px;
+        }
+        .btn-text:hover {
+            background: rgba(129,140,248,.08); color: var(--text-primary);
+        }
+        .filter-btn {
+            padding: 8px 16px; border-radius: 8px; background: transparent;
+            border: 1px solid var(--border); color: var(--text-secondary);
+            cursor: pointer; font-size: 13px; font-weight: 500;
+            transition: all .2s; font-family: inherit;
+        }
+        .filter-btn:hover {
+            background: rgba(129,140,248,.08); color: var(--text-primary);
+        }
+        .filter-btn.active {
+            background: var(--accent); color: #fff; border-color: var(--accent);
+        }
 
         /* === KNOWLEDGE BASE === */
         .kb-header {
@@ -696,6 +716,14 @@
             display: flex; animation: fadeIn .3s;
         }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(100px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes slideOut {
+            from { opacity: 1; transform: translateX(0); }
+            to { opacity: 0; transform: translateX(100px); }
+        }
         .modal {
             background: var(--bg-elevated); border: 1px solid var(--border);
             border-radius: 24px; padding: 40px; width: 100%; max-width: 520px;
@@ -705,6 +733,21 @@
         @keyframes slideUp {
             from { opacity: 0; transform: translateY(40px); }
             to { opacity: 1; transform: translateY(0); }
+        }
+        .modal {
+            display: none; position: fixed; inset: 0;
+            background: rgba(0,0,0,.7); backdrop-filter: blur(8px);
+            z-index: 200; align-items: center; justify-content: center;
+            padding: 20px;
+        }
+        .modal.active {
+            display: flex; animation: fadeIn .3s;
+        }
+        .modal-content {
+            background: var(--bg-elevated); border: 1px solid var(--border);
+            border-radius: 24px; padding: 32px; width: 100%; max-width: 520px;
+            position: relative; animation: slideUp .4s; max-height: 90vh;
+            overflow-y: auto;
         }
         .modal h3 {
             font-size: 24px; font-weight: 800; color: var(--text-primary);
@@ -922,6 +965,19 @@
                 <span class="icon">💬</span>
                 <span>Hội thoại</span>
                 <span class="badge-count" id="convCount">0</span>
+            </div>
+            <div class="nav-item" data-view="comments" onclick="showView('comments')">
+                <span class="icon">📝</span>
+                <span>Bình luận</span>
+                <span class="badge-count" id="commentCount">0</span>
+            </div>
+            <div class="nav-item" data-view="posts" onclick="showView('posts')">
+                <span class="icon">📄</span>
+                <span>Bài viết</span>
+            </div>
+            <div class="nav-item" data-view="broadcast" onclick="showView('broadcast')">
+                <span class="icon">📢</span>
+                <span>Broadcast</span>
             </div>
             <div class="nav-item" data-view="customers" onclick="showView('customers')">
                 <span class="icon">👥</span>
@@ -1380,12 +1436,18 @@ function showView(view) {
     const titles = {
         'overview': 'Tổng quan',
         'conversations': 'Hội thoại',
+        'comments': 'Bình luận',
+        'posts': 'Bài viết',
+        'broadcast': 'Broadcast',
         'customers': 'Khách hàng'
     };
     document.getElementById('breadcrumbCurrent').textContent = titles[view] || view;
     
     if (view === 'overview') renderOverview();
     else if (view === 'conversations') renderAllConversations();
+    else if (view === 'comments') renderComments();
+    else if (view === 'posts') renderPosts();
+    else if (view === 'broadcast') renderBroadcast();
     else if (view === 'customers') renderCustomers();
 }
 
@@ -1626,6 +1688,50 @@ function renderSettingsTab(el) {
             <div class="save-indicator" id="saveIndicator">✓ Đã lưu tự động</div>
         </div>
         
+        <div class="form-section">
+            <h3>📝 Quản lý bình luận Facebook</h3>
+            <div class="form-row">
+                <label style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="fbAutoReply" ${a.settings?.facebook_comments?.auto_reply !== false ? 'checked' : ''}>
+                    <span>Tự động trả lời bình luận</span>
+                </label>
+            </div>
+            <div class="form-row">
+                <label style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="fbAutoInbox" ${a.settings?.facebook_comments?.auto_inbox ? 'checked' : ''}>
+                    <span>Tự động inbox khi hỏi giá</span>
+                </label>
+            </div>
+            <div class="form-row">
+                <label style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="fbAutoHideSpam" ${a.settings?.facebook_comments?.auto_hide_spam ? 'checked' : ''}>
+                    <span>Tự động ẩn spam</span>
+                </label>
+            </div>
+            <div class="form-row">
+                <label style="display: flex; align-items: center; gap: 10px;">
+                    <input type="checkbox" id="fbAutoLike" ${a.settings?.facebook_comments?.auto_like ? 'checked' : ''}>
+                    <span>Tự động like bình luận tích cực</span>
+                </label>
+            </div>
+            <div class="form-row">
+                <label>Tin nhắn inbox mẫu</label>
+                <textarea id="fbInboxMessage" rows="2">${esc(a.settings?.facebook_comments?.inbox_message || 'Cảm ơn bạn đã quan tâm! Mình inbox chi tiết nhé 😊')}</textarea>
+            </div>
+            <div class="form-row">
+                <label>Từ khóa trigger inbox (phân cách bằng dấu phẩy)</label>
+                <input type="text" id="fbInboxKeywords" value="${esc(a.settings?.facebook_comments?.inbox_keywords?.join(', ') || 'giá, bao nhiêu, inbox, pm, còn hàng')}">
+            </div>
+            <div class="form-row">
+                <label>Từ khóa blacklist (phân cách bằng dấu phẩy)</label>
+                <input type="text" id="fbBlacklistKeywords" value="${esc(a.settings?.facebook_comments?.blacklist_keywords?.join(', ') || 'lừa đảo, scam')}">
+            </div>
+            <div class="form-row">
+                <label>Delay trả lời (giây)</label>
+                <input type="number" id="fbReplyDelay" value="${a.settings?.facebook_comments?.reply_delay || 30}" min="0" max="300">
+            </div>
+        </div>
+        
         <div class="btn-group">
             <button class="btn btn-primary" onclick="saveAgent()">💾 Lưu thay đổi</button>
             <button class="btn btn-danger" onclick="deleteAgent()">🗑️ Xoá Agent</button>
@@ -1654,6 +1760,23 @@ async function saveAgent() {
     };
     const key = document.getElementById('agentApiKey').value;
     if (key) body.llm_api_key = key;
+    
+    // Facebook comment settings
+    const fbSettings = {
+        auto_reply: document.getElementById('fbAutoReply')?.checked || false,
+        auto_inbox: document.getElementById('fbAutoInbox')?.checked || false,
+        auto_hide_spam: document.getElementById('fbAutoHideSpam')?.checked || false,
+        auto_like: document.getElementById('fbAutoLike')?.checked || false,
+        inbox_message: document.getElementById('fbInboxMessage')?.value || '',
+        inbox_keywords: (document.getElementById('fbInboxKeywords')?.value || '').split(',').map(k => k.trim()).filter(k => k),
+        blacklist_keywords: (document.getElementById('fbBlacklistKeywords')?.value || '').split(',').map(k => k.trim()).filter(k => k),
+        reply_delay: parseInt(document.getElementById('fbReplyDelay')?.value || '30')
+    };
+    
+    body.settings = {
+        ...(currentAgent.settings || {}),
+        facebook_comments: fbSettings
+    };
     try {
         await api(`/api/agents/${currentAgent.id}`, { method: 'PUT', body: JSON.stringify(body) });
         const indicator = document.getElementById('saveIndicator');
@@ -3282,6 +3405,696 @@ function timeAgo(ts) {
     return Math.floor(d/86400)+'d';
 }
 
+// COMMENTS
+let currentCommentFilter = 'all';
+
+async function renderComments() {
+    const c = document.getElementById('content');
+    
+    if (!currentAgent) {
+        c.innerHTML = `
+            <div style="text-align: center; padding: 48px 24px;">
+                <div style="font-size: 48px; margin-bottom: 16px;">📝</div>
+                <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Quản lý bình luận Facebook</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 24px;">Chọn một agent từ sidebar để xem bình luận</p>
+            </div>
+        `;
+        return;
+    }
+    
+    c.innerHTML = `
+        <div style="margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 style="font-size: 24px; font-weight: 700;">📝 Bình luận Facebook</h2>
+                <div id="commentStats" style="display: flex; gap: 16px; font-size: 13px;">
+                    <span>Tổng: <strong id="totalComments">0</strong></span>
+                    <span style="color: var(--orange);">Chưa trả lời: <strong id="unrepliedComments">0</strong></span>
+                    <span style="color: var(--red);">Spam: <strong id="spamComments">0</strong></span>
+                </div>
+            </div>
+            
+            <div style="display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap;">
+                <button class="filter-btn active" data-filter="all" onclick="filterComments('all')">Tất cả</button>
+                <button class="filter-btn" data-filter="unreplied" onclick="filterComments('unreplied')">Chưa trả lời</button>
+                <button class="filter-btn" data-filter="replied" onclick="filterComments('replied')">Đã trả lời</button>
+                <button class="filter-btn" data-filter="spam" onclick="filterComments('spam')">Spam</button>
+                <button class="filter-btn" data-filter="hidden" onclick="filterComments('hidden')">Ẩn</button>
+                <input type="search" id="commentSearch" placeholder="Tìm kiếm bình luận..." style="margin-left: auto; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); width: 240px;">
+            </div>
+        </div>
+        
+        <div id="commentList" style="display: flex; flex-direction: column; gap: 12px;">
+            ${[1,2,3].map(() => '<div class="skeleton-card" style="height: 120px;"></div>').join('')}
+        </div>
+    `;
+    
+    await loadComments();
+}
+
+async function loadComments(filter = 'all') {
+    if (!currentAgent) return;
+    
+    try {
+        const comments = await api(`/api/agents/${currentAgent.id}/comments?filter=${filter}&limit=50`);
+        
+        const listEl = document.getElementById('commentList');
+        
+        if (!comments || comments.length === 0) {
+            listEl.innerHTML = '<div style="text-align: center; padding: 48px; color: var(--text-secondary);">Chưa có bình luận nào</div>';
+            return;
+        }
+        
+        // Update stats
+        const total = comments.length;
+        const unreplied = comments.filter(c => !c.replied_at).length;
+        const spam = comments.filter(c => c.is_spam).length;
+        
+        if (document.getElementById('totalComments')) {
+            document.getElementById('totalComments').textContent = total;
+            document.getElementById('unrepliedComments').textContent = unreplied;
+            document.getElementById('spamComments').textContent = spam;
+        }
+        
+        listEl.innerHTML = comments.map(comment => `
+            <div class="card" style="padding: 20px;" data-comment-id="${comment.id}">
+                <div style="display: flex; gap: 16px; margin-bottom: 12px;">
+                    <div style="width: 40px; height: 40px; border-radius: 50%; background: linear-gradient(135deg, var(--accent), var(--purple)); display: flex; align-items: center; justify-content: center; font-size: 18px; color: #fff; font-weight: 600; flex-shrink: 0;">
+                        ${(comment.commenter_name || 'U')[0].toUpperCase()}
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                            <div>
+                                <div style="font-weight: 600; font-size: 14px;">${esc(comment.commenter_name || 'Unknown')}</div>
+                                <div style="font-size: 12px; color: var(--text-secondary);">${timeAgo(comment.created_at)}</div>
+                            </div>
+                            <div style="display: flex; gap: 6px; align-items: center;">
+                                ${comment.sentiment === 'positive' ? '<span style="font-size: 14px;">😊 Tích cực</span>' : ''}
+                                ${comment.sentiment === 'neutral' ? '<span style="font-size: 14px;">😐 Trung lập</span>' : ''}
+                                ${comment.sentiment === 'negative' ? '<span style="font-size: 14px;">😠 Tiêu cực</span>' : ''}
+                                ${comment.is_spam ? '<span style="padding: 2px 8px; background: var(--red); color: #fff; border-radius: 12px; font-size: 11px; font-weight: 600;">SPAM</span>' : ''}
+                                ${comment.is_hidden ? '<span style="padding: 2px 8px; background: var(--zinc-600); color: #fff; border-radius: 12px; font-size: 11px; font-weight: 600;">ẨN</span>' : ''}
+                            </div>
+                        </div>
+                        
+                        <div style="margin-bottom: 8px; padding: 12px; background: var(--bg-input); border-radius: 8px;">
+                            <div style="font-size: 14px; line-height: 1.5;">${esc(comment.message)}</div>
+                        </div>
+                        
+                        ${comment.post_text ? `<div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">📄 Post: ${esc(comment.post_text.substring(0, 60))}...</div>` : ''}
+                        
+                        ${comment.ai_reply ? `
+                            <div style="margin-top: 12px; padding: 12px; background: rgba(129,140,248,0.1); border-left: 3px solid var(--accent); border-radius: 8px;">
+                                <div style="font-size: 11px; color: var(--accent); margin-bottom: 4px; font-weight: 600;">🤖 AI đã trả lời ${timeAgo(comment.replied_at)}</div>
+                                <div style="font-size: 13px;">${esc(comment.ai_reply)}</div>
+                            </div>
+                        ` : ''}
+                        
+                        <div id="reply-box-${comment.id}" style="display: none; margin-top: 12px;">
+                            <textarea id="reply-text-${comment.id}" placeholder="Nhập câu trả lời..." style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); font-family: inherit; resize: vertical; min-height: 60px;"></textarea>
+                            <div style="display: flex; gap: 8px; margin-top: 8px;">
+                                <button onclick="sendCommentReply('${comment.id}')" class="btn btn-sm" style="background: var(--accent);">Gửi</button>
+                                <button onclick="cancelCommentReply('${comment.id}')" class="btn btn-sm btn-ghost">Hủy</button>
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; gap: 12px; margin-top: 12px; font-size: 13px;">
+                            <button onclick="showReplyBox('${comment.id}')" class="btn-text">💬 Trả lời</button>
+                            <button onclick="likeComment('${comment.id}')" class="btn-text">👍 Like</button>
+                            <button onclick="hideComment('${comment.id}')" class="btn-text">🙈 Ẩn</button>
+                            <button onclick="deleteComment('${comment.id}')" class="btn-text" style="color: var(--red);">🗑️ Xoá</button>
+                            ${!comment.is_spam ? `<button onclick="markCommentSpam('${comment.id}')" class="btn-text">🚫 Spam</button>` : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+        
+    } catch (e) {
+        document.getElementById('commentList').innerHTML = `<div style="text-align: center; padding: 48px; color: var(--red);">Lỗi: ${e.message}</div>`;
+    }
+}
+
+function filterComments(filter) {
+    currentCommentFilter = filter;
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === filter);
+    });
+    loadComments(filter);
+}
+
+function showReplyBox(commentId) {
+    document.getElementById(`reply-box-${commentId}`).style.display = 'block';
+    document.getElementById(`reply-text-${commentId}`).focus();
+}
+
+function cancelCommentReply(commentId) {
+    document.getElementById(`reply-box-${commentId}`).style.display = 'none';
+    document.getElementById(`reply-text-${commentId}`).value = '';
+}
+
+async function sendCommentReply(commentId) {
+    const text = document.getElementById(`reply-text-${commentId}`).value.trim();
+    if (!text) return;
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}/comments/${commentId}/reply`, {
+            method: 'POST',
+            body: JSON.stringify({ message: text })
+        });
+        showToast('✅ Đã gửi câu trả lời!', 'success');
+        cancelCommentReply(commentId);
+        loadComments(currentCommentFilter);
+    } catch (e) {
+        showToast('❌ Lỗi: ' + e.message, 'error');
+    }
+}
+
+async function likeComment(commentId) {
+    try {
+        await api(`/api/agents/${currentAgent.id}/comments/${commentId}/like`, { method: 'POST' });
+        showToast('👍 Đã like!', 'success');
+    } catch (e) {
+        showToast('❌ Lỗi: ' + e.message, 'error');
+    }
+}
+
+async function hideComment(commentId) {
+    try {
+        await api(`/api/agents/${currentAgent.id}/comments/${commentId}/hide`, { method: 'POST' });
+        showToast('🙈 Đã ẩn bình luận!', 'success');
+        loadComments(currentCommentFilter);
+    } catch (e) {
+        showToast('❌ Lỗi: ' + e.message, 'error');
+    }
+}
+
+async function deleteComment(commentId) {
+    if (!confirm('Bạn có chắc muốn xoá bình luận này?')) return;
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}/comments/${commentId}`, { method: 'DELETE' });
+        showToast('🗑️ Đã xoá bình luận!', 'success');
+        loadComments(currentCommentFilter);
+    } catch (e) {
+        showToast('❌ Lỗi: ' + e.message, 'error');
+    }
+}
+
+async function markCommentSpam(commentId) {
+    try {
+        await api(`/api/agents/${currentAgent.id}/comments/${commentId}/spam`, { method: 'POST' });
+        showToast('🚫 Đã đánh dấu spam!', 'success');
+        loadComments(currentCommentFilter);
+    } catch (e) {
+        showToast('❌ Lỗi: ' + e.message, 'error');
+    }
+}
+
+// POSTS
+let currentPostFilter = 'all';
+
+async function renderPosts() {
+    const c = document.getElementById('content');
+    
+    if (!currentAgent) {
+        c.innerHTML = `
+            <div style="text-align: center; padding: 48px 24px;">
+                <div style="font-size: 48px; margin-bottom: 16px;">📄</div>
+                <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Quản lý bài viết</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 24px;">Chọn một agent từ sidebar để quản lý bài viết</p>
+            </div>
+        `;
+        return;
+    }
+    
+    c.innerHTML = `
+        <div style="margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                <h2 style="font-size: 24px; font-weight: 700;">📄 Bài viết</h2>
+                <button onclick="openCreatePost()" class="btn" style="background: var(--accent);">+ Tạo bài viết mới</button>
+            </div>
+            
+            <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+                <button class="filter-btn active" data-filter="all" onclick="filterPosts('all')">Tất cả</button>
+                <button class="filter-btn" data-filter="draft" onclick="filterPosts('draft')">Nháp</button>
+                <button class="filter-btn" data-filter="scheduled" onclick="filterPosts('scheduled')">Đã lên lịch</button>
+                <button class="filter-btn" data-filter="published" onclick="filterPosts('published')">Đã đăng</button>
+            </div>
+        </div>
+        
+        <div id="postList" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">
+            ${[1,2,3].map(() => '<div class="skeleton-card" style="height: 200px;"></div>').join('')}
+        </div>
+        
+        <!-- Create Post Modal -->
+        <div id="createPostModal" class="modal">
+            <div class="modal-content" style="max-width: 600px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px;">
+                    <h3 style="font-size: 20px; font-weight: 700;">Tạo bài viết mới</h3>
+                    <button onclick="closeCreatePost()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: var(--text-secondary);">×</button>
+                </div>
+                
+                <div style="display: flex; flex-direction: column; gap: 16px;">
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 500;">Nội dung</label>
+                        <textarea id="postContent" placeholder="Viết nội dung bài viết..." style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); font-family: inherit; resize: vertical; min-height: 120px;"></textarea>
+                        <div style="text-align: right; font-size: 12px; color: var(--text-secondary); margin-top: 4px;">
+                            <span id="charCount">0</span> ký tự
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <button onclick="generatePostContent()" class="btn btn-ghost" style="width: 100%;">🤖 AI viết giúp</button>
+                    </div>
+                    
+                    <div id="aiVariations" style="display: none; flex-direction: column; gap: 8px;">
+                        <!-- AI-generated variations will appear here -->
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 500;">URL hình ảnh (tùy chọn)</label>
+                        <input type="url" id="postImageUrl" placeholder="https://..." style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary);">
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 500;">Kênh</label>
+                        <select id="postChannel" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary);">
+                            <option value="facebook">Facebook</option>
+                            <option value="zalo">Zalo</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label style="display: block; margin-bottom: 8px; font-weight: 500;">Lên lịch</label>
+                        <input type="datetime-local" id="postSchedule" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary);">
+                    </div>
+                    
+                    <div style="display: flex; gap: 12px;">
+                        <button onclick="savePost('draft')" class="btn btn-ghost" style="flex: 1;">Lưu nháp</button>
+                        <button onclick="savePost('scheduled')" class="btn" style="flex: 1; background: var(--orange);">Lên lịch</button>
+                        <button onclick="savePost('published')" class="btn" style="flex: 1; background: var(--green);">Đăng ngay</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Character count
+    document.getElementById('postContent').addEventListener('input', (e) => {
+        document.getElementById('charCount').textContent = e.target.value.length;
+    });
+    
+    await loadPosts();
+}
+
+async function loadPosts(filter = null) {
+    if (!currentAgent) return;
+    
+    try {
+        let url = `/api/agents/${currentAgent.id}/posts?limit=50`;
+        if (filter && filter !== 'all') {
+            url += `&status=${filter}`;
+        }
+        
+        const posts = await api(url);
+        
+        const listEl = document.getElementById('postList');
+        
+        if (!posts || posts.length === 0) {
+            listEl.innerHTML = '<div style="grid-column: 1/-1; text-align: center; padding: 48px; color: var(--text-secondary);">Chưa có bài viết nào</div>';
+            return;
+        }
+        
+        listEl.innerHTML = posts.map(post => {
+            const statusColors = {
+                draft: 'var(--zinc-500)',
+                scheduled: 'var(--orange)',
+                published: 'var(--green)',
+                failed: 'var(--red)'
+            };
+            
+            const statusLabels = {
+                draft: 'Nháp',
+                scheduled: 'Đã lên lịch',
+                published: 'Đã đăng',
+                failed: 'Thất bại'
+            };
+            
+            return `
+                <div class="card" style="padding: 20px;">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+                        <span style="padding: 4px 12px; background: ${statusColors[post.status]}; color: #fff; border-radius: 12px; font-size: 11px; font-weight: 600;">
+                            ${statusLabels[post.status]}
+                        </span>
+                        <span style="font-size: 12px; color: var(--text-secondary);">${timeAgo(post.created_at)}</span>
+                    </div>
+                    
+                    <div style="margin-bottom: 12px; font-size: 14px; line-height: 1.5; max-height: 100px; overflow: hidden; text-overflow: ellipsis;">
+                        ${esc(post.content.substring(0, 150))}${post.content.length > 150 ? '...' : ''}
+                    </div>
+                    
+                    ${post.image_url ? `<div style="margin-bottom: 12px; height: 120px; background: url('${post.image_url}') center/cover; border-radius: 8px;"></div>` : ''}
+                    
+                    ${post.scheduled_at ? `<div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 8px;">⏰ ${new Date(post.scheduled_at).toLocaleString('vi-VN')}</div>` : ''}
+                    
+                    ${post.status === 'published' && post.engagement ? `
+                        <div style="display: flex; gap: 16px; font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+                            <span>👍 ${post.engagement.likes || 0}</span>
+                            <span>💬 ${post.engagement.comments || 0}</span>
+                            <span>🔗 ${post.engagement.shares || 0}</span>
+                        </div>
+                    ` : ''}
+                    
+                    <div style="display: flex; gap: 8px;">
+                        ${post.status !== 'published' ? `
+                            <button onclick="editPost('${post.id}')" class="btn btn-sm btn-ghost">✏️ Sửa</button>
+                            <button onclick="deletePost('${post.id}')" class="btn btn-sm btn-ghost" style="color: var(--red);">🗑️ Xoá</button>
+                        ` : ''}
+                        ${post.status !== 'published' ? `
+                            <button onclick="publishPostNow('${post.id}')" class="btn btn-sm" style="background: var(--green);">📤 Đăng ngay</button>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+    } catch (e) {
+        document.getElementById('postList').innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 48px; color: var(--red);">Lỗi: ${e.message}</div>`;
+    }
+}
+
+function filterPosts(filter) {
+    currentPostFilter = filter;
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === filter);
+    });
+    loadPosts(filter === 'all' ? null : filter);
+}
+
+function openCreatePost() {
+    document.getElementById('createPostModal').classList.add('active');
+    document.getElementById('postContent').value = '';
+    document.getElementById('postImageUrl').value = '';
+    document.getElementById('postSchedule').value = '';
+    document.getElementById('charCount').textContent = '0';
+    document.getElementById('aiVariations').style.display = 'none';
+}
+
+function closeCreatePost() {
+    document.getElementById('createPostModal').classList.remove('active');
+}
+
+async function generatePostContent() {
+    const prompt = window.prompt('Mô tả bài viết bạn muốn tạo (VD: "Viết bài quảng cáo khuyến mãi 50% cuối tuần")');
+    if (!prompt) return;
+    
+    try {
+        const result = await api(`/api/agents/${currentAgent.id}/posts/generate`, {
+            method: 'POST',
+            body: JSON.stringify({ prompt, type: 'general' })
+        });
+        
+        const variationsEl = document.getElementById('aiVariations');
+        variationsEl.style.display = 'flex';
+        variationsEl.innerHTML = result.variations.map((v, i) => {
+            const encoded = btoa(unescape(encodeURIComponent(v)));
+            return `
+                <div class="card" style="padding: 12px; cursor: pointer; font-size: 13px;" onclick="selectVariation('${encoded}')">
+                    <div style="font-weight: 600; margin-bottom: 6px;">Phiên bản ${i + 1}</div>
+                    <div style="color: var(--text-secondary);">${esc(v.substring(0, 100))}...</div>
+                </div>
+            `;
+        }).join('');
+        
+        showToast('✨ Đã tạo ' + result.variations.length + ' phiên bản!', 'success');
+    } catch (e) {
+        showToast('❌ Lỗi: ' + e.message, 'error');
+    }
+}
+
+function selectVariation(encoded) {
+    const content = decodeURIComponent(escape(atob(encoded)));
+    document.getElementById('postContent').value = content;
+    document.getElementById('charCount').textContent = content.length;
+    document.getElementById('aiVariations').style.display = 'none';
+    showToast('✅ Đã chọn phiên bản này!', 'success');
+}
+
+async function savePost(status) {
+    const content = document.getElementById('postContent').value.trim();
+    if (!content) {
+        showToast('⚠️ Vui lòng nhập nội dung bài viết!', 'warning');
+        return;
+    }
+    
+    const imageUrl = document.getElementById('postImageUrl').value.trim();
+    const channel = document.getElementById('postChannel').value;
+    const scheduledAt = document.getElementById('postSchedule').value;
+    
+    try {
+        const data = {
+            content,
+            image_url: imageUrl || null,
+            channel,
+            status,
+            scheduled_at: scheduledAt || null
+        };
+        
+        if (status === 'published') {
+            // Direct publish
+            const post = await api(`/api/agents/${currentAgent.id}/posts`, {
+                method: 'POST',
+                body: JSON.stringify({ ...data, status: 'draft' })
+            });
+            
+            await api(`/api/agents/${currentAgent.id}/posts/${post.id}/publish`, {
+                method: 'POST'
+            });
+            
+            showToast('✅ Đã đăng bài viết!', 'success');
+        } else {
+            await api(`/api/agents/${currentAgent.id}/posts`, {
+                method: 'POST',
+                body: JSON.stringify(data)
+            });
+            
+            showToast(`✅ Đã lưu ${status === 'draft' ? 'nháp' : 'lên lịch'}!`, 'success');
+        }
+        
+        closeCreatePost();
+        loadPosts(currentPostFilter);
+    } catch (e) {
+        showToast('❌ Lỗi: ' + e.message, 'error');
+    }
+}
+
+async function publishPostNow(postId) {
+    if (!confirm('Bạn có chắc muốn đăng bài viết này ngay?')) return;
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}/posts/${postId}/publish`, {
+            method: 'POST'
+        });
+        showToast('✅ Đã đăng bài viết!', 'success');
+        loadPosts(currentPostFilter);
+    } catch (e) {
+        showToast('❌ Lỗi: ' + e.message, 'error');
+    }
+}
+
+async function deletePost(postId) {
+    if (!confirm('Bạn có chắc muốn xoá bài viết này?')) return;
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}/posts/${postId}`, {
+            method: 'DELETE'
+        });
+        showToast('🗑️ Đã xoá bài viết!', 'success');
+        loadPosts(currentPostFilter);
+    } catch (e) {
+        showToast('❌ Lỗi: ' + e.message, 'error');
+    }
+}
+
+// BROADCAST
+async function renderBroadcast() {
+    const c = document.getElementById('content');
+    
+    if (!currentAgent) {
+        c.innerHTML = `
+            <div style="text-align: center; padding: 48px 24px;">
+                <div style="font-size: 48px; margin-bottom: 16px;">📢</div>
+                <h3 style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Gửi tin hàng loạt</h3>
+                <p style="color: var(--text-secondary); margin-bottom: 24px;">Chọn một agent từ sidebar để gửi broadcast</p>
+            </div>
+        `;
+        return;
+    }
+    
+    c.innerHTML = `
+        <div style="display: grid; grid-template-columns: 1fr 400px; gap: 24px;">
+            <!-- Compose Section -->
+            <div>
+                <h2 style="font-size: 24px; font-weight: 700; margin-bottom: 24px;">📢 Gửi tin hàng loạt</h2>
+                
+                <div class="card" style="padding: 24px;">
+                    <div style="display: flex; flex-direction: column; gap: 16px;">
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500;">Tin nhắn</label>
+                            <textarea id="broadcastMessage" placeholder="Nhập nội dung tin nhắn..." style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); font-family: inherit; resize: vertical; min-height: 120px;"></textarea>
+                        </div>
+                        
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500;">Kênh</label>
+                            <select id="broadcastChannel" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary);">
+                                <option value="all">Tất cả kênh</option>
+                                <option value="telegram">Telegram</option>
+                                <option value="facebook">Facebook Messenger</option>
+                                <option value="zalo">Zalo</option>
+                                <option value="webchat">Webchat</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label style="display: block; margin-bottom: 8px; font-weight: 500;">Giới hạn (khách hàng)</label>
+                            <input type="number" id="broadcastLimit" value="100" min="1" max="1000" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary);">
+                        </div>
+                        
+                        <div id="broadcastPreview" style="padding: 12px; background: rgba(129,140,248,0.1); border-radius: 8px; font-size: 13px;">
+                            💡 <strong>Preview:</strong> Sẽ gửi đến tối đa <span id="previewCount">100</span> khách hàng
+                        </div>
+                        
+                        <button onclick="sendBroadcast()" class="btn" style="background: var(--accent); padding: 14px;">📤 Gửi Broadcast</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- History Section -->
+            <div>
+                <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 16px;">Lịch sử</h3>
+                <div id="broadcastHistory" style="display: flex; flex-direction: column; gap: 12px;">
+                    ${[1,2,3].map(() => '<div class="skeleton-card" style="height: 100px;"></div>').join('')}
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Preview update
+    document.getElementById('broadcastLimit').addEventListener('input', (e) => {
+        document.getElementById('previewCount').textContent = e.target.value;
+    });
+    
+    await loadBroadcastHistory();
+}
+
+async function loadBroadcastHistory() {
+    if (!currentAgent) return;
+    
+    try {
+        const history = await api(`/api/agents/${currentAgent.id}/broadcast/history?limit=20`);
+        
+        const historyEl = document.getElementById('broadcastHistory');
+        
+        if (!history || history.length === 0) {
+            historyEl.innerHTML = '<div style="text-align: center; padding: 24px; color: var(--text-secondary);">Chưa có lịch sử</div>';
+            return;
+        }
+        
+        historyEl.innerHTML = history.map(b => {
+            const statusColors = {
+                pending: 'var(--zinc-500)',
+                sending: 'var(--orange)',
+                completed: 'var(--green)',
+                failed: 'var(--red)'
+            };
+            
+            const statusLabels = {
+                pending: 'Đang chờ',
+                sending: 'Đang gửi',
+                completed: 'Hoàn thành',
+                failed: 'Thất bại'
+            };
+            
+            return `
+                <div class="card" style="padding: 16px;">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 8px;">
+                        <span style="padding: 3px 10px; background: ${statusColors[b.status]}; color: #fff; border-radius: 12px; font-size: 10px; font-weight: 600;">
+                            ${statusLabels[b.status]}
+                        </span>
+                        <span style="font-size: 11px; color: var(--text-secondary);">${timeAgo(b.created_at)}</span>
+                    </div>
+                    
+                    <div style="font-size: 13px; margin-bottom: 8px; max-height: 40px; overflow: hidden; text-overflow: ellipsis;">
+                        ${esc(b.message.substring(0, 80))}${b.message.length > 80 ? '...' : ''}
+                    </div>
+                    
+                    ${b.status === 'completed' ? `
+                        <div style="display: flex; gap: 12px; font-size: 11px; color: var(--text-secondary);">
+                            <span>✅ ${b.sent_count || 0}</span>
+                            <span>❌ ${b.failed_count || 0}</span>
+                            <span>⏭️ ${b.skipped_count || 0}</span>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+        }).join('');
+        
+    } catch (e) {
+        document.getElementById('broadcastHistory').innerHTML = `<div style="text-align: center; padding: 24px; color: var(--red);">Lỗi: ${e.message}</div>`;
+    }
+}
+
+async function sendBroadcast() {
+    const message = document.getElementById('broadcastMessage').value.trim();
+    if (!message) {
+        showToast('⚠️ Vui lòng nhập nội dung tin nhắn!', 'warning');
+        return;
+    }
+    
+    const channel = document.getElementById('broadcastChannel').value;
+    const limit = parseInt(document.getElementById('broadcastLimit').value);
+    
+    if (!confirm(`Bạn có chắc muốn gửi tin nhắn đến tối đa ${limit} khách hàng?`)) return;
+    
+    try {
+        await api(`/api/agents/${currentAgent.id}/broadcast`, {
+            method: 'POST',
+            body: JSON.stringify({
+                message,
+                channel_filter: channel,
+                limit
+            })
+        });
+        
+        showToast('✅ Đã bắt đầu gửi broadcast! Kiểm tra lịch sử để theo dõi.', 'success');
+        
+        document.getElementById('broadcastMessage').value = '';
+        
+        setTimeout(() => loadBroadcastHistory(), 2000);
+    } catch (e) {
+        showToast('❌ Lỗi: ' + e.message, 'error');
+    }
+}
+
+// Toast notification
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+        position: fixed; bottom: 24px; right: 24px; z-index: 9999;
+        padding: 16px 24px; border-radius: 12px; font-size: 14px; font-weight: 500;
+        background: ${type === 'success' ? 'var(--green)' : type === 'error' ? 'var(--red)' : 'var(--accent)'};
+        color: #fff; box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+        animation: slideIn 0.3s ease-out;
+    `;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    setTimeout(() => {
+        toast.style.animation = 'slideOut 0.3s ease-out';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
 // INIT
 (async () => {
     try {
@@ -3310,6 +4123,10 @@ document.getElementById('createModal').addEventListener('click', e => {
 });
 document.getElementById('confirmModal').addEventListener('click', e => {
     if(e.target===e.currentTarget) closeConfirm();
+});
+// Add click handler for createPostModal when it exists
+document.addEventListener('click', e => {
+    if (e.target.id === 'createPostModal') closeCreatePost();
 });
 </script>
 </body>

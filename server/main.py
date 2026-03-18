@@ -3,7 +3,7 @@ AI Agent Platform — Multi-tenant CSKH
 Upgraded with Supabase PostgreSQL + JWT Auth + RLS
 """
 
-from fastapi import FastAPI, Body, HTTPException, Header, Depends, Query, Request
+from fastapi import FastAPI, Body, HTTPException, Header, Depends, Query, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
@@ -2622,6 +2622,512 @@ async def comment_analytics(
             "top_commenters": top_commenters,
             "period_days": days
         }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# === POSTS ===
+
+@app.post("/api/agents/{agent_id}/posts")
+async def create_post(
+    agent_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user)
+):
+    """Create and optionally schedule a Facebook/Zalo post"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        content = body.get("content")
+        if not content:
+            raise HTTPException(400, "Content is required")
+        
+        image_url = body.get("image_url")
+        scheduled_at = body.get("scheduled_at")
+        channel = body.get("channel", "facebook")
+        status = body.get("status", "draft")
+        
+        if channel not in ["facebook", "zalo"]:
+            raise HTTPException(400, "Invalid channel")
+        
+        if status not in ["draft", "scheduled", "published"]:
+            raise HTTPException(400, "Invalid status")
+        
+        sb = get_supabase()
+        post_data = {
+            "agent_id": agent_id,
+            "channel": channel,
+            "content": content,
+            "image_url": image_url,
+            "status": status,
+            "scheduled_at": scheduled_at,
+        }
+        
+        result = sb.table("posts").insert(post_data).execute()
+        
+        if not result.data:
+            raise HTTPException(500, "Failed to create post")
+        
+        return result.data[0]
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/agents/{agent_id}/posts")
+async def list_posts(
+    agent_id: str,
+    status: str = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    user=Depends(get_current_user)
+):
+    """List all posts for an agent"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        sb = get_supabase()
+        query = sb.table("posts").select("*").eq("agent_id", agent_id)
+        
+        if status:
+            query = query.eq("status", status)
+        
+        query = query.order("created_at", desc=True).limit(limit)
+        result = query.execute()
+        
+        return result.data
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.get("/api/agents/{agent_id}/posts/{post_id}")
+async def get_post(
+    agent_id: str,
+    post_id: str,
+    user=Depends(get_current_user)
+):
+    """Get a specific post"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        sb = get_supabase()
+        result = sb.table("posts").select("*").eq("id", post_id).eq("agent_id", agent_id).execute()
+        
+        if not result.data:
+            raise HTTPException(404, "Post not found")
+        
+        return result.data[0]
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.put("/api/agents/{agent_id}/posts/{post_id}")
+async def update_post(
+    agent_id: str,
+    post_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user)
+):
+    """Update a draft/scheduled post"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        # Only allow updating draft/scheduled posts
+        sb = get_supabase()
+        check = sb.table("posts").select("status").eq("id", post_id).eq("agent_id", agent_id).execute()
+        
+        if not check.data:
+            raise HTTPException(404, "Post not found")
+        
+        if check.data[0]["status"] not in ["draft", "scheduled"]:
+            raise HTTPException(400, "Can only update draft or scheduled posts")
+        
+        update_data = {}
+        if "content" in body:
+            update_data["content"] = body["content"]
+        if "image_url" in body:
+            update_data["image_url"] = body["image_url"]
+        if "scheduled_at" in body:
+            update_data["scheduled_at"] = body["scheduled_at"]
+        if "status" in body:
+            update_data["status"] = body["status"]
+        if "channel" in body:
+            update_data["channel"] = body["channel"]
+        
+        result = sb.table("posts").update(update_data).eq("id", post_id).execute()
+        
+        if not result.data:
+            raise HTTPException(500, "Failed to update post")
+        
+        return result.data[0]
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.delete("/api/agents/{agent_id}/posts/{post_id}")
+async def delete_post(
+    agent_id: str,
+    post_id: str,
+    user=Depends(get_current_user)
+):
+    """Delete a draft/scheduled post"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        # Only allow deleting draft/scheduled posts
+        sb = get_supabase()
+        check = sb.table("posts").select("status").eq("id", post_id).eq("agent_id", agent_id).execute()
+        
+        if not check.data:
+            raise HTTPException(404, "Post not found")
+        
+        if check.data[0]["status"] == "published":
+            raise HTTPException(400, "Cannot delete published posts")
+        
+        sb.table("posts").delete().eq("id", post_id).execute()
+        
+        return {"success": True}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/agents/{agent_id}/posts/{post_id}/publish")
+async def publish_post(
+    agent_id: str,
+    post_id: str,
+    user=Depends(get_current_user)
+):
+    """Publish a post immediately to Facebook/Zalo"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        sb = get_supabase()
+        post = sb.table("posts").select("*").eq("id", post_id).eq("agent_id", agent_id).execute()
+        
+        if not post.data:
+            raise HTTPException(404, "Post not found")
+        
+        post_data = post.data[0]
+        
+        if post_data["status"] == "published":
+            raise HTTPException(400, "Post already published")
+        
+        # Get agent's Facebook credentials
+        fb_settings = agent.get("settings", {}).get("facebook", {})
+        page_access_token = fb_settings.get("page_access_token")
+        page_id = fb_settings.get("page_id")
+        
+        if not page_access_token or not page_id:
+            raise HTTPException(400, "Facebook credentials not configured")
+        
+        # Publish to Facebook
+        import httpx
+        
+        graph_url = f"https://graph.facebook.com/v18.0/{page_id}/feed"
+        
+        payload = {
+            "message": post_data["content"],
+            "access_token": page_access_token
+        }
+        
+        if post_data.get("image_url"):
+            # Use photo endpoint if image is provided
+            graph_url = f"https://graph.facebook.com/v18.0/{page_id}/photos"
+            payload["url"] = post_data["image_url"]
+            payload["caption"] = post_data["content"]
+            del payload["message"]
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(graph_url, data=payload)
+            
+            if response.status_code != 200:
+                error_msg = response.json().get("error", {}).get("message", "Unknown error")
+                raise HTTPException(500, f"Facebook API error: {error_msg}")
+            
+            fb_response = response.json()
+            external_post_id = fb_response.get("id") or fb_response.get("post_id")
+        
+        # Update post status
+        update_data = {
+            "status": "published",
+            "published_at": "now()",
+            "external_post_id": external_post_id
+        }
+        
+        result = sb.table("posts").update(update_data).eq("id", post_id).execute()
+        
+        return result.data[0]
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/api/agents/{agent_id}/posts/generate")
+async def generate_post_content(
+    agent_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user)
+):
+    """AI generates post content based on prompt"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        prompt = body.get("prompt")
+        if not prompt:
+            raise HTTPException(400, "Prompt is required")
+        
+        post_type = body.get("type", "general")
+        
+        # Get agent's LLM settings
+        llm_config = agent.get("llm_config", {})
+        api_key = llm_config.get("api_key")
+        model = llm_config.get("model", "gpt-4o-mini")
+        base_url = llm_config.get("base_url", "https://api.openai.com/v1")
+        
+        if not api_key:
+            raise HTTPException(400, "LLM API key not configured for this agent")
+        
+        # Build system prompt based on type
+        type_prompts = {
+            "promotion": "Bạn là chuyên gia viết content quảng cáo. Hãy tạo bài viết quảng cáo hấp dẫn, thu hút và có CTA rõ ràng.",
+            "announcement": "Bạn là chuyên gia viết thông báo. Hãy tạo thông báo chuyên nghiệp, rõ ràng và dễ hiểu.",
+            "engagement": "Bạn là chuyên gia viết content tương tác. Hãy tạo bài viết thú vị, khuyến khích người xem tương tác (like, comment, share).",
+            "general": "Bạn là chuyên gia viết content mạng xã hội. Hãy tạo bài viết phù hợp với yêu cầu."
+        }
+        
+        system_prompt = type_prompts.get(post_type, type_prompts["general"])
+        system_prompt += "\n\nHãy tạo 2-3 phiên bản khác nhau của bài viết. Mỗi phiên bản ngăn cách bởi '---'."
+        
+        # Call LLM
+        import httpx
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{base_url}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "temperature": 0.9,
+                    "max_tokens": 500
+                },
+                timeout=30.0
+            )
+            
+            if response.status_code != 200:
+                raise HTTPException(500, f"LLM API error: {response.text}")
+            
+            result = response.json()
+            content = result["choices"][0]["message"]["content"]
+            
+            # Split into variations
+            variations = [v.strip() for v in content.split("---") if v.strip()]
+            
+            return {"variations": variations}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+# === BROADCAST ===
+
+@app.post("/api/agents/{agent_id}/broadcast")
+async def send_broadcast(
+    agent_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+    background_tasks: BackgroundTasks
+):
+    """Send message to multiple customers"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        message = body.get("message")
+        if not message:
+            raise HTTPException(400, "Message is required")
+        
+        channel_filter = body.get("channel_filter", "all")
+        tag_filter = body.get("tag_filter", [])
+        limit = body.get("limit", 100)
+        
+        # Create broadcast record
+        sb = get_supabase()
+        broadcast_data = {
+            "agent_id": agent_id,
+            "message": message,
+            "channel_filter": channel_filter,
+            "tag_filter": tag_filter,
+            "status": "pending"
+        }
+        
+        result = sb.table("broadcasts").insert(broadcast_data).execute()
+        broadcast = result.data[0]
+        broadcast_id = broadcast["id"]
+        
+        # Queue the broadcast for background processing
+        background_tasks.add_task(process_broadcast, broadcast_id, agent_id, message, channel_filter, tag_filter, limit)
+        
+        return broadcast
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
+
+async def process_broadcast(broadcast_id: str, agent_id: str, message: str, channel_filter: str, tag_filter: list, limit: int):
+    """Background task to process broadcast"""
+    import asyncio
+    
+    try:
+        sb = get_supabase()
+        
+        # Update status to sending
+        sb.table("broadcasts").update({"status": "sending"}).eq("id", broadcast_id).execute()
+        
+        # Get customers
+        query = sb.table("customers").select("*").eq("agent_id", agent_id)
+        
+        if channel_filter != "all":
+            query = query.eq("channel", channel_filter)
+        
+        if tag_filter:
+            query = query.contains("tags", tag_filter)
+        
+        query = query.limit(limit)
+        customers_result = query.execute()
+        customers = customers_result.data
+        
+        sent_count = 0
+        failed_count = 0
+        skipped_count = 0
+        
+        for customer in customers:
+            try:
+                channel = customer.get("channel")
+                customer_id = customer.get("external_id")
+                
+                if not customer_id:
+                    skipped_count += 1
+                    continue
+                
+                # Send message based on channel
+                if channel == "telegram":
+                    # Send via Telegram
+                    import os
+                    bot_token = os.getenv("TELEGRAM_BOT_TOKEN")
+                    if bot_token:
+                        import httpx
+                        async with httpx.AsyncClient() as client:
+                            await client.post(
+                                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                                json={"chat_id": customer_id, "text": message}
+                            )
+                        sent_count += 1
+                    else:
+                        skipped_count += 1
+                
+                elif channel == "facebook":
+                    # Send via Facebook Messenger - requires page access token
+                    agent = get_agent(agent_id)
+                    fb_settings = agent.get("settings", {}).get("facebook", {})
+                    page_access_token = fb_settings.get("page_access_token")
+                    
+                    if page_access_token:
+                        import httpx
+                        async with httpx.AsyncClient() as client:
+                            await client.post(
+                                "https://graph.facebook.com/v18.0/me/messages",
+                                params={"access_token": page_access_token},
+                                json={
+                                    "recipient": {"id": customer_id},
+                                    "message": {"text": message}
+                                }
+                            )
+                        sent_count += 1
+                    else:
+                        skipped_count += 1
+                
+                else:
+                    skipped_count += 1
+                
+                # Rate limiting: 1 msg/sec
+                await asyncio.sleep(1)
+            
+            except Exception:
+                failed_count += 1
+                continue
+        
+        # Update broadcast status
+        sb.table("broadcasts").update({
+            "status": "completed",
+            "sent_count": sent_count,
+            "failed_count": failed_count,
+            "skipped_count": skipped_count,
+            "completed_at": "now()"
+        }).eq("id", broadcast_id).execute()
+    
+    except Exception as e:
+        # Update to failed status
+        sb = get_supabase()
+        sb.table("broadcasts").update({"status": "failed"}).eq("id", broadcast_id).execute()
+
+
+@app.get("/api/agents/{agent_id}/broadcast/history")
+async def broadcast_history(
+    agent_id: str,
+    limit: int = Query(50, ge=1, le=200),
+    user=Depends(get_current_user)
+):
+    """List past broadcasts"""
+    try:
+        agent = get_agent(agent_id)
+        if not agent or agent["user_id"] != user["id"]:
+            raise HTTPException(404, "Agent not found")
+        
+        sb = get_supabase()
+        result = sb.table("broadcasts").select("*").eq("agent_id", agent_id).order("created_at", desc=True).limit(limit).execute()
+        
+        return result.data
     
     except HTTPException:
         raise
