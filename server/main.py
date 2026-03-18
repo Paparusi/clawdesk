@@ -4249,3 +4249,8 @@ async def root():
 async def dashboard():
     """Serve dashboard"""
     return FileResponse(str(STATIC_DIR / "dashboard.html"))
+
+@app.get("/dashboard.html")
+async def dashboard_html():
+    """Serve dashboard (alternate URL)"""
+    return FileResponse(str(STATIC_DIR / "dashboard.html"))
