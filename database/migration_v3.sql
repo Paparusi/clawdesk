@@ -6,18 +6,21 @@ CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
-    type VARCHAR(50) NOT NULL, -- 'new_conversation', 'escalation', 'ticket_created', 'mention'
+    type VARCHAR(50) NOT NULL,
     title VARCHAR(255) NOT NULL,
     message TEXT,
-    link VARCHAR(500), -- URL to navigate to
+    link VARCHAR(500),
     is_read BOOLEAN DEFAULT FALSE,
     metadata JSONB DEFAULT '{}',
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    
-    INDEX idx_notifications_user_id (user_id),
-    INDEX idx_notifications_is_read (is_read),
-    INDEX idx_notifications_created_at (created_at)
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at);
+
+-- Service role full access
+CREATE POLICY "Service full access notifications" ON notifications FOR ALL TO service_role USING (true);
 
 -- Enable RLS
 ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
