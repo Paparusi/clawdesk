@@ -114,7 +114,7 @@ SELECT
     ARRAY_AGG(DISTINCT c.channel) as channels,
     COUNT(DISTINCT c.id) as total_conversations,
     MIN(c.created_at) as first_seen,
-    MAX(c.updated_at) as last_seen,
+    MAX(c.last_message_at) as last_seen,
     c.metadata
 FROM conversations c
 GROUP BY c.agent_id, c.sender_id, c.sender_name, c.metadata;
